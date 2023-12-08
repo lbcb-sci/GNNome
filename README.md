@@ -20,31 +20,30 @@ Figure generated with DALL-E 3.
 - cmake 3.11+
 
 
-### Setting up virtual environment
+### Setting up the environment
 
-#### 1. Create a conda virtual environment
+#### 1. Clone the repository
+```bash
+git clone https://github.com/lbcb-sci/GNNome.git
+cd GNNome
+```
+
+#### 2. Create a conda virtual environment
 ```bash
 conda create -n gnnome python=3.8 pip
 conda activate gnnome
 ```
 
-#### 1.a Install cmake and zlib
+#### 2.a Install cmake and zlib
 In case you don't already have them installed on your system you can install cmake and zlib inside your conda environment:
 ```bash
 conda install cmake
 conda install zlib
 ```
 
-#### 1.b If you are using CUDA 12.0 or higher, install cudatoolkit v11.0
+#### 2.b If you are using CUDA 12.0 or higher, install cudatoolkit v11.0
 ```bash
 conda install cudatoolkit=11.0
-```
-
-
-#### 2. Clone the repository
-```bash
-git clone https://github.com/lbcb-sci/GNNome.git
-cd GNNome
 ```
 
 #### 3. Install the requirements with pip (~3 min)
