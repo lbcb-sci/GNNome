@@ -43,8 +43,8 @@ conda install cudatoolkit=11.0
 
 #### 2. Clone the repository
 ```bash
-git clone ...
-cd ...
+git clone https://github.com/lbcb-sci/GNNome.git
+cd GNNome
 ```
 
 #### 3. Install the requirements with pip (~3 min)
