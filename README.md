@@ -46,9 +46,15 @@ conda install zlib
 conda install cudatoolkit=11.0
 ```
 
-#### 3. Install the requirements with pip (~3 min)
+#### 3a. Install the requirements with pip--for GPU and CUDA 11.0+ (~3 min)
 ```bash
 pip install -r requirements.txt
+```
+
+#### 3b. Install the requirements with pip--if you have no GPU (~3 min)
+Note: In this case, we recommend only running inference.
+```bash
+pip install -r requirements_cpu.txt
 ```
 
 #### 4a. Install hifiasm for constructing HiFi assembly graphs
