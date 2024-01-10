@@ -1,3 +1,5 @@
+#### DEPRECATED ####
+
 import argparse
 import gzip
 import os
@@ -160,7 +162,11 @@ def simulate_reads_hifi(data_path, refs_path, chr_dict, assembler):
     if 'vendor' not in os.listdir():
         os.mkdir('vendor')
         
-    pbsim3_dir = f'/home/vrcekl/pbsim3'  # TODO: Put into hyperparameters/config file or into vendor!
+    pbsim3_dir = hyperparameters.get_hyperparameters()['pbsim3_dir']
+    if len(pbsim3_dir) == 0:
+        pbsim3_dir = 'pbsim3'
+    
+    # pbsim3_dir = f'/home/vrcekl/pbsim3'
 
     data_path = os.path.abspath(data_path)
     for chrN_flag, n_need in chr_dict.items():
@@ -169,32 +175,32 @@ def simulate_reads_hifi(data_path, refs_path, chr_dict, assembler):
         if '+' in chrN_flag:
             continue
 
-        elif chrN_flag.endswith('_chm13'):
-            chrN = chrN_flag[:-6]
-            chr_path = os.path.join(refs_path, 'CHM13', 'chromosomes')
-            pbsim_path = os.path.join(data_path, 'chm13_pbsim3')
-            chr_seq_path = os.path.join(chr_path, f'{chrN}.fasta')
-            sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/CHM13/chm13_subsampled.fastq'
-            sample_profile_id = f'chm13'
-            depth = 30
+        # elif chrN_flag.endswith('_chm13'):
+        #     chrN = chrN_flag[:-6]
+        #     chr_path = os.path.join(refs_path, 'CHM13', 'chromosomes')
+        #     pbsim_path = os.path.join(data_path, 'chm13_pbsim3')
+        #     chr_seq_path = os.path.join(chr_path, f'{chrN}.fasta')
+        #     sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/CHM13/chm13_subsampled.fastq'
+        #     sample_profile_id = f'chm13'
+        #     depth = 60
                     
-        elif chrN_flag.endswith('_ncbr'):
-            chrN = chrN_flag[:-5]
-            chr_path = os.path.join(refs_path, 'ncoibor', 'chromosomes')
-            pbsim_path = os.path.join(data_path, 'ncoibor_pbsim3')
-            chr_seq_path = os.path.join(chr_path, f'{chrN}.fasta')
-            sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/CHM13/chm13_subsampled.fastq'
-            sample_profile_id = f'chm13'
-            depth = 30
+        # elif chrN_flag.endswith('_ncbr'):
+        #     chrN = chrN_flag[:-5]
+        #     chr_path = os.path.join(refs_path, 'ncoibor', 'chromosomes')
+        #     pbsim_path = os.path.join(data_path, 'ncoibor_pbsim3')
+        #     chr_seq_path = os.path.join(chr_path, f'{chrN}.fasta')
+        #     sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/CHM13/chm13_subsampled.fastq'
+        #     sample_profile_id = f'chm13'
+        #     depth = 60
                     
         elif chrN_flag.endswith('_hg002'):
             chrN = chrN_flag[:-6]
-            chr_path = os.path.join(refs_path, f'HG002', 'hg002_chromosomes')
-            pbsim_path = os.path.join(data_path, 'hg002_pbsim3')
+            chr_path = os.path.join(refs_path, f'HG002', 'hg002_chromosomes')  # TODO: redefine refs path
+            pbsim_path = os.path.join(data_path, 'hg002_pbsim3')  # TODO: redefine data path
             chr_seq_path = os.path.join(chr_path, f'{chrN}_MATERNAL.fasta')
-            sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/HG002/20kb/m64011_190830_220126.sub.fastq'
-            sample_profile_id = f'20kb-m64011_190830_220126'
-            depth = 30
+            sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/HG002/20kb/m64011_190830_220126.sub.fastq'  # TODO: Need to provide this as an argument
+            sample_profile_id = f'20kb-m64011_190830_220126'  # TODO: Need to provide this as an argument
+            depth = 60
 
         else:
             print('Give valid suffix!')
@@ -235,7 +241,10 @@ def simulate_reads_hifi(data_path, refs_path, chr_dict, assembler):
 def simulate_reads_combo(data_path, refs_path, chr_dict, assembler):
     data_path = os.path.abspath(data_path)
     pbsim_path = os.path.join(data_path, 'combo')
-    pbsim3_dir = f'/home/vrcekl/pbsim3'
+    
+    pbsim3_dir = hyperparameters.get_hyperparameters()['pbsim3_dir']
+    if len(pbsim3_dir) == 0:
+        pbsim3_dir = 'pbsim3'
 
     for chrN_combo, n_need in chr_dict.items():
         if '+' not in chrN_combo:

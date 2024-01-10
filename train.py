@@ -20,6 +20,7 @@ import wandb
 
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
+from paths import get_paths
 import evaluate
 import models
 import utils
@@ -105,17 +106,19 @@ def train(train_path, valid_path, out, assembler, savedir=None, overfit=False, d
     npc_lower_bound = hyperparameters['npc_lower_bound']
     npc_upper_bound = hyperparameters['npc_upper_bound']
     k_extra_hops = hyperparameters['k_extra_hops']
-    if savedir is None:
-        checkpoints_path = hyperparameters['checkpoints_path']
-        models_path = hyperparameters['models_path']
-    else:
-        checkpoints_path = savedir
-        models_path = savedir
     masking = hyperparameters['masking']
     mask_frac_low = hyperparameters['mask_frac_low']
     mask_frac_high = hyperparameters['mask_frac_high']
     use_symmetry_loss = hyperparameters['use_symmetry_loss']
-    alpha = hyperparameters['alpha']
+    alpha = hyperparameters['alpha']    
+    paths = get_paths()
+    
+    if savedir is None:
+        checkpoints_path = paths['checkpoints_path']
+        models_path = paths['models_path']
+    else:
+        checkpoints_path = os.path.join(savedir, 'checkpoints')
+        models_path = os.path.join(savedir, 'models')
 
     print(f'----- TRAIN -----')
     print(f'\nSaving checkpoints: {checkpoints_path}')

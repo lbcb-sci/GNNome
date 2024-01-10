@@ -11,13 +11,21 @@ def get_hyperparameters():
         'refs_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/references',
         'checkpoints_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/checkpoints',
         'models_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/models',
-        'assembler': 'hifiasm',
-        'dataset': 'chm13',  # Not used at the moment
-        'initials': 'LV',
         
         'data_path_ont': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/ont/train',
         'eval_path_ont': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/ont/evaluate',
         'asms_path_ont': '/home/vrcekl/scratch/gnnome_assembly/evaluate_ont',
+        
+        'raven_path': '',
+        'hifiasm_path': '',
+        'pbsim3_dir': '',
+        
+        'sample_profile_id': '',
+        'sample_file': '',
+        
+        'assembler': 'hifiasm',
+        'dataset': 'chm13',  # Not used at the moment
+        'initials': 'LV',
 
         'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
         'seed': 1,

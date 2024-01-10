@@ -7,6 +7,7 @@ import dgl
 from dgl.data import DGLDataset
 
 import graph_parser
+from paths import get_paths
 from utils import preprocess_graph, add_positional_encoding, extract_contigs
 
 
@@ -32,8 +33,11 @@ class AssemblyGraphDataset(DGLDataset):
         save_dir = os.path.join(self.assembly_dir, f'processed')
         self.output_dir = os.path.join(self.assembly_dir, f'output')
         self.info_dir = os.path.join(self.assembly_dir, f'info')
-        self.raven_path = os.path.abspath('vendor/raven/build/bin/raven')
-        self.hifiasm_path = os.path.abspath('vendor/hifiasm/hifiasm')
+        
+        paths = get_paths()
+        self.raven_path = paths['raven_path']
+        self.hifiasm_path = paths['hifiasm_path']
+        
         super().__init__(name='assembly_graphs', raw_dir=raw_dir, save_dir=save_dir)
 
         self.graph_list = []
@@ -44,7 +48,6 @@ class AssemblyGraphDataset(DGLDataset):
                 graph = preprocess_graph(graph, self.root, idx)
                 if nb_pos_enc is not None:
                     graph = add_positional_encoding(graph, nb_pos_enc) 
-                # graph, _ = dgl.khop_in_subgraph(graph, 390, k=20)  # DEBUG !!!!
                 print(f'DGL graph idx={idx} info:\n',graph)
                 self.graph_list.append((idx, graph))
             self.graph_list.sort(key=lambda x: x[0])
@@ -114,23 +117,19 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
             # Raven
             if assembler == 'raven':
                 subprocess.run(f'{self.raven_path} --disable-checkpoints --identity {filter} -k29 -w9 -t{threads} -p0 {reads_path} > {idx}_{out}', shell=True, cwd=self.output_dir)
-                subprocess.run(f'mv graph_1.csv {idx}_graph_1.csv', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv graph_1.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
 
             # Hifiasm
             elif assembler == 'hifiasm':
-                # subprocess.run(f'{self.hifiasm_path} -o {idx}_asm -l0 -t{threads} {reads_path}', shell=True, cwd=self.output_dir)  # graph: {idx}_asm.unclean_moje.read.gfa
-                # subprocess.run(f'mv {idx}_asm.unclean_moje.read.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
-                # gfa_path = os.path.join(self.output_dir, f'{idx}_asm.unclean_moje.read.gfa')
-                subprocess.run(f'/home/vrcekl/hifiasm-0.18.7-r514/hifiasm --prt-raw -o {idx}_asm -t32 -l0 {reads_path}', shell=True, cwd=self.output_dir)
+                subprocess.run(f'{self.hifiasm_path} --prt-raw -o {idx}_asm -t{threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv {idx}_asm.bp.raw.r_utg.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
                 extract_contigs(self.output_dir, idx)
 
             print(f'\nAssembler generated the graph! Processing...')
             processed_path = os.path.join(self.save_dir, f'{idx}.dgl')
-            graph, pred, succ, reads, edges, read_to_node, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)  # TODO: This is a mess!
+            graph, pred, succ, reads, edges, read_to_node, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             print(f'Parsed assembler output! Saving files...')
 
             dgl.save_graphs(processed_path, graph)
