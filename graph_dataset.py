@@ -12,10 +12,10 @@ from utils import preprocess_graph, add_positional_encoding, extract_contigs
 
 
 class AssemblyGraphDataset(DGLDataset):
-    def __init__(self, root, nb_pos_enc, assembler, specs=None, generate=False):
+    def __init__(self, root, nb_pos_enc, assembler, threads=32, generate=False):
         self.root = os.path.abspath(root)
-        self.specs = specs
         self.assembler = assembler
+        self.threads = threads
 
         self.assembly_dir = os.path.join(self.root, self.assembler)
         print(self.assembly_dir)
@@ -71,32 +71,18 @@ class AssemblyGraphDataset(DGLDataset):
 
 class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
-    def __init__(self, root, nb_pos_enc=10, assembler='hifiasm', specs=None, generate=False):
-        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, specs=specs, generate=generate)
+    def __init__(self, root, nb_pos_enc=10, assembler='hifiasm', threads=32, generate=False):
+        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, threads=threads, generate=generate)
 
     def process(self):
         """Process the raw data and save it on the disk."""
-        if self.specs is None:
-            threads = 32
-            filter = 0.99
-            out = 'assembly.fasta'
-            assembler = 'hifiasm'
-        else:
-            threads = self.specs['threads']
-            filter = self.specs['filter']
-            out = self.specs['out']
-            assembler = self.specs['assembler']
+        assembler = 'hifiasm'
 
         assert assembler in ('raven', 'hifiasm'), 'Choose either "raven" or "hifiasm" assembler'
 
         graphia_dir = os.path.join(self.assembly_dir, 'graphia')
         if not os.path.isdir(graphia_dir):
             os.mkdir(graphia_dir)
-
-        print(f'====> FILTER = {filter}\n')
-
-        n_have = len(os.listdir(self.save_dir))
-        n_need = len(os.listdir(self.raw_dir))
 
         raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
         prc_files = {int(re.findall(r'(\d+).dgl', prc)[0]) for prc in os.listdir(self.save_dir)}
@@ -106,23 +92,20 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
             fastq = f'{idx}.fasta'
             if fastq not in os.listdir(self.raw_dir):
                 fastq = f'{idx}.fastq'
-            print(f'Step {cnt}: generating graphs for reads in {fastq}')
+            print(f'\nStep {cnt}: generating graphs for reads in {fastq}')
             reads_path = os.path.abspath(os.path.join(self.raw_dir, fastq))
             print(f'Path to the reads: {reads_path}')
-            print(f'Using assembler: {assembler}')
-            # print(f'Starting assembler at: {self.raven_path}')
-            print(f'Parameters (raven only): --identity {filter} -k29 -w9 -t{threads} -p0')
-            print(f'Assembly output: {out}\n')
+            print(f'Using assembler: {assembler}\n')
             
             # Raven
             if assembler == 'raven':
-                subprocess.run(f'{self.raven_path} --disable-checkpoints --identity {filter} -k29 -w9 -t{threads} -p0 {reads_path} > {idx}_{out}', shell=True, cwd=self.output_dir)
+                subprocess.run(f'{self.raven_path} --disable-checkpoints --identity 0.99 -k29 -w9 -t{self.threads} -p0 {reads_path} > {idx}_assembly.fasta', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv graph_1.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
 
             # Hifiasm
             elif assembler == 'hifiasm':
-                subprocess.run(f'{self.hifiasm_path} --prt-raw -o {idx}_asm -t{threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
+                subprocess.run(f'{self.hifiasm_path} --prt-raw -o {idx}_asm -t{self.threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv {idx}_asm.bp.raw.r_utg.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
                 extract_contigs(self.output_dir, idx)
@@ -147,20 +130,11 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
 class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
 
-    def __init__(self, root, nb_pos_enc=10, assembler='raven', specs=None, generate=False):
-        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, specs=specs, generate=generate)
+    def __init__(self, root, nb_pos_enc=10, assembler='raven', threads=32, generate=False):
+        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, threads=threads, generate=generate)
 
     def process(self):
         """Process the raw data and save it on the disk."""
-        if self.specs is None:
-            threads = 32
-            filter = 0.99
-            out = 'assembly.fasta'
-        else:
-            threads = self.specs['threads']
-            filter = self.specs['filter']
-            out = self.specs['out']
-
         assembler = 'raven'
 
         graphia_dir = os.path.join(self.assembly_dir, 'graphia')
@@ -175,24 +149,22 @@ class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
             fastq = f'{idx}.fasta'
             if fastq not in os.listdir(self.raw_dir):
                 fastq = f'{idx}.fastq'
-            print(f'Step {cnt}: generating graphs for reads in {fastq}')
+            print(f'\nStep {cnt}: generating graphs for reads in {fastq}')
             reads_path = os.path.abspath(os.path.join(self.raw_dir, fastq))
             print(f'Path to the reads: {reads_path}')
             print(f'Using assembler: {assembler}')
-            # print(f'Starting assembler at: {self.raven_path}')
-            print(f'Parameters (raven only): --identity {filter} -k29 -w9 -t{threads} -p0')
-            print(f'Assembly output: {out}\n')
+            print(f'Other assemblers currently unavailable\n')
             
             # Raven
             if assembler == 'raven':
-                subprocess.run(f'{self.raven_path} --disable-checkpoints -t{threads} -p0 {reads_path} > {idx}_{out}', shell=True, cwd=self.output_dir)
+                subprocess.run(f'{self.raven_path} --disable-checkpoints -t{self.threads} -p0 {reads_path} > {idx}_assembly.fasta', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv graph_1.csv {idx}_graph_1.csv', shell=True, cwd=self.output_dir)
                 subprocess.run(f'mv graph_1.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
 
             print(f'\nAssembler generated the graph! Processing...')
             processed_path = os.path.join(self.save_dir, f'{idx}.dgl')
-            graph, pred, succ, reads, edges, read_to_node, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)  # TODO: This is a mess!
+            graph, pred, succ, reads, edges, read_to_node, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             print(f'Parsed assembler output! Saving files...')
 
             dgl.save_graphs(processed_path, graph)
