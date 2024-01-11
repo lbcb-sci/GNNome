@@ -365,7 +365,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     utils.set_seed(seed)
     time_start = datetime.now()
 
-    ds = AssemblyGraphDataset(data_path, nb_pos_enc, assembler)
+    ds = AssemblyGraphDataset(data_path, assembler)
 
     inference_dir = os.path.join(savedir, 'decode')
     if not os.path.isdir(inference_dir):

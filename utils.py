@@ -14,6 +14,7 @@ from sklearn.metrics import precision_recall_curve, average_precision_score
 import algorithms
 from hyperparameters import get_hyperparameters
 
+
 def set_seed(seed=42):
     """Set random seed to enable reproducibility.
     
@@ -53,7 +54,7 @@ def extract_contigs(path, idx):
             n += 1
         SeqIO.write(contigs, asm_path, 'fasta')
     subprocess.run(f'rm {path}/{idx}_asm*', shell=True)
-    subprocess.run(f'rm {path}/output.csv', shell=True)
+    # subprocess.run(f'rm {path}/output.csv', shell=True)
 
 
 def preprocess_graph(g, data_path, idx):
@@ -69,17 +70,21 @@ def preprocess_graph(g, data_path, idx):
     return g
 
 
-def add_positional_encoding(g, pe_dim):
+def add_positional_encoding(g):
     """
         Initializing positional encoding with k-RW-PE
     """
 
     g.ndata['in_deg'] = g.in_degrees().float()
     g.ndata['out_deg'] = g.out_degrees().float()
+    
+    pe_dim = get_hyperparameters()['nb_pos_enc']
+    pe_type = get_hyperparameters()['type_pos_enc']
+    
+    if pe_dim == 0:
+        return g
 
-    type_pe = 'PR'
-
-    if type_pe == 'RW':
+    if pe_type == 'RW':
         # Geometric diffusion features with Random Walk
         A = g.adjacency_matrix(scipy_fmt="csr")
         Dinv = sp.diags(dgl.backend.asnumpy(g.in_degrees()).clip(1) ** -1.0, dtype=float) # D^-1
@@ -94,7 +99,7 @@ def add_positional_encoding(g, pe_dim):
         PE = torch.stack(PE,dim=-1)
         g.ndata['pe'] = PE  
 
-    if type_pe == 'PR':
+    if pe_type == 'PR':
         # k-step PageRank features
         A = g.adjacency_matrix(scipy_fmt="csr")
         D = A.sum(axis=1) # out degree

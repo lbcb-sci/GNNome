@@ -12,7 +12,7 @@ from utils import preprocess_graph, add_positional_encoding, extract_contigs
 
 
 class AssemblyGraphDataset(DGLDataset):
-    def __init__(self, root, nb_pos_enc, assembler, threads=32, generate=False):
+    def __init__(self, root, assembler, threads=32, generate=False):
         self.root = os.path.abspath(root)
         self.assembler = assembler
         self.threads = threads
@@ -46,8 +46,7 @@ class AssemblyGraphDataset(DGLDataset):
                 idx = int(file[:-4])
                 graph = dgl.load_graphs(os.path.join(self.save_dir, file))[0][0]
                 graph = preprocess_graph(graph, self.root, idx)
-                if nb_pos_enc is not None:
-                    graph = add_positional_encoding(graph, nb_pos_enc) 
+                graph = add_positional_encoding(graph)
                 print(f'DGL graph idx={idx} info:\n',graph)
                 self.graph_list.append((idx, graph))
             self.graph_list.sort(key=lambda x: x[0])
@@ -71,8 +70,8 @@ class AssemblyGraphDataset(DGLDataset):
 
 class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
-    def __init__(self, root, nb_pos_enc=10, assembler='hifiasm', threads=32, generate=False):
-        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, threads=threads, generate=generate)
+    def __init__(self, root, assembler='hifiasm', threads=32, generate=False):
+        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate)
 
     def process(self):
         """Process the raw data and save it on the disk."""
@@ -130,8 +129,8 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
 class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
 
-    def __init__(self, root, nb_pos_enc=10, assembler='raven', threads=32, generate=False):
-        super().__init__(root=root, nb_pos_enc=nb_pos_enc, assembler=assembler, threads=threads, generate=generate)
+    def __init__(self, root, assembler='raven', threads=32, generate=False):
+        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate)
 
     def process(self):
         """Process the raw data and save it on the disk."""

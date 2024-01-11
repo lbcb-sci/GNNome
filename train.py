@@ -138,10 +138,10 @@ def train(train_path, valid_path, out, assembler, savedir=None, overfit=False, d
     assert valid_path is not None, "valid_path not specified!"
 
     if not overfit:
-        ds_train = AssemblyGraphDataset(train_path, nb_pos_enc=nb_pos_enc, assembler=assembler)
-        ds_valid = AssemblyGraphDataset(valid_path, nb_pos_enc=nb_pos_enc, assembler=assembler)
+        ds_train = AssemblyGraphDataset(train_path, assembler=assembler)
+        ds_valid = AssemblyGraphDataset(valid_path, assembler=assembler)
     else:
-        ds_train = ds_valid = AssemblyGraphDataset(train_path, nb_pos_enc=nb_pos_enc, assembler=assembler)
+        ds_train = ds_valid = AssemblyGraphDataset(train_path, assembler=assembler)
 
     pos_to_neg_ratio = sum([((g.edata['y']==1).sum() / (g.edata['y']==0).sum()).item() for idx, g in ds_train]) / len(ds_train)
 
