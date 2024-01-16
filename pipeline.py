@@ -18,7 +18,7 @@ import graph_dataset
 from train import train
 from inference import inference
 import evaluate
-import config
+import train_valid_chrs
 import hyperparameters
 
 
@@ -162,11 +162,7 @@ def simulate_reads_hifi(data_path, refs_path, chr_dict, assembler):
     if 'vendor' not in os.listdir():
         os.mkdir('vendor')
         
-    pbsim3_dir = hyperparameters.get_hyperparameters()['pbsim3_dir']
-    if len(pbsim3_dir) == 0:
-        pbsim3_dir = 'pbsim3'
-    
-    # pbsim3_dir = f'/home/vrcekl/pbsim3'
+    pbsim3_dir = f'/home/vrcekl/pbsim3'
 
     data_path = os.path.abspath(data_path)
     for chrN_flag, n_need in chr_dict.items():
@@ -848,7 +844,7 @@ if __name__ == '__main__':
     elif strategy == 'beamsearch':
         save_dir = f'{model_name}_B{B}x{num_decoding_paths}'
 
-    dicts = config.get_config()
+    dicts = train_valid_chrs.get_config()
     train_dict = dicts['train_dict']
     valid_dict = dicts['valid_dict']
     test_dict = dicts['test_dict']

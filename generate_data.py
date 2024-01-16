@@ -8,7 +8,7 @@ from datetime import datetime
 from Bio import SeqIO, AlignIO
 
 import graph_dataset
-import config
+import train_valid_chrs
 from paths import get_paths
 
 
@@ -177,10 +177,7 @@ if __name__ == '__main__':
     assert len(sample_profile_id) > 0, "You need to specify sample_profile_id!"
     sample_file = paths['sample_file']
 
-    dicts = config.get_config()
-    train_dict = dicts['train_dict']
-    valid_dict = dicts['valid_dict']
-    
-    all_chr = merge_dicts(train_dict, valid_dict)
+    train_chr, valid_chr = train_valid_chrs.get_train_valid_chrs()
+    all_chr = merge_dicts(train_chr, valid_chr)
     simulate_reads_hifi(outdir_path, chrs_path, all_chr, assembler, pbsim3_dir, sample_profile_id, sample_file)
     generate_graphs_hifi(outdir_path, all_chr, assembler, threads)

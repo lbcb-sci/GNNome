@@ -49,7 +49,8 @@ def get_hyperparameters():
         'edge_features': 2,  # Put 2 if you use similarities, 1 otherwise
         'hidden_edge_features': 16,
         'hidden_edge_scores': 64,
-        'nb_pos_enc': 16,  # TODO: Check this
+        'nb_pos_enc': 0,
+        'type_pos_enc': 'PR',
         'batch_norm': True,
         # 'dropout': 0.08,
 
