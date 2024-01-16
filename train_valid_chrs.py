@@ -67,8 +67,4 @@ _valid_dict = {
 
 
 def get_train_valid_chrs():
-    return {
-        'train_dict': _train_dict,
-        'valid_dict': _valid_dict,
-    }
-
+    return _train_dict, _valid_dict
