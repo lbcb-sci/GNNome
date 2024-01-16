@@ -154,7 +154,7 @@ def generate_graphs_hifi(outdir_path, chr_dict, assembler, threads):
         n_prc = len(os.listdir(chr_prc_path))
         n_diff = max(0, n_raw - n_prc)
         print(f'SETUP::generate:: Generate {n_diff} graphs for {chrN}')
-        graph_dataset.AssemblyGraphDataset_HiFi(chr_sim_path, nb_pos_enc=None, assembler=assembler, threads=threads, generate=True)
+        graph_dataset.AssemblyGraphDataset_HiFi(chr_sim_path, assembler=assembler, threads=threads, generate=True)
 
 
 if __name__ == '__main__':

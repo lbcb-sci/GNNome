@@ -8,27 +8,20 @@ from datetime import datetime
 from tqdm import tqdm
 
 import train_valid_chrs
-from hyperparameters import get_hyperparameters
-from paths import get_paths
 
 
-def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, out, overfit=False):
+def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, name, overfit=False):
     print(f'SETUP::split')
     data_path = os.path.abspath(data_path)
 
-    hg002_path = os.path.join(data_path, 'hg002_pbsim3')
+    # hg002_path = os.path.join(data_path, 'hg002_pbsim3')
+    hg002_path = data_path
     combo_path = os.path.join(data_path, 'combo')
 
-    if out is None:
-        train_dir = os.path.join(savedir, f'train')
-        valid_dir = os.path.join(savedir, f'valid')
-        train_path = os.path.join(savedir, f'train', assembler)
-        valid_path = os.path.join(savedir, f'valid', assembler)
-    else:
-        train_dir = os.path.join(savedir, f'train_{out}')
-        valid_dir = os.path.join(savedir, f'valid_{out}')
-        train_path = os.path.join(savedir, f'train_{out}', assembler)
-        valid_path = os.path.join(savedir, f'valid_{out}', assembler)
+    train_dir = os.path.join(savedir, f'train_{name}')
+    valid_dir = os.path.join(savedir, f'valid_{name}')
+    train_path = os.path.join(savedir, f'train_{name}', assembler)
+    valid_path = os.path.join(savedir, f'valid_{name}', assembler)
 
     if not os.path.isdir(train_path):
         os.makedirs(train_path)
@@ -49,7 +42,7 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, out
     for assembler in assemblers:
         for chrN_flag, n_need in train_dict.items():
             # copy n_need datasets from chrN into train dict
-            if '_r' in chrN_flag and n_need > 1:
+            if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
             print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {train_path}')
@@ -78,7 +71,7 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, out
     for assembler in assemblers:
         for chrN_flag, n_need in valid_dict.items():
             # copy n_need datasets from chrN into train dict
-            if '_r' in chrN_flag and n_need > 1:
+            if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
             print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {valid_path}')
@@ -130,5 +123,5 @@ if __name__ == '__main__':
         name = f'{timestamp}_{name}'
 
     train_path, valid_path = train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, name, overfit=False)
-    print(f'\nTraining data saved in:\t{train_path}')
-    print(f'Validation data saved in:\t{valid_path}')
+    print(f'\nTraining data saved in:   {train_path}')
+    print(f'Validation data saved in: {valid_path}\n')
