@@ -101,16 +101,16 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--datadir', type=str, default=None, help='Where all the generated data is stored')
     parser.add_argument('--savedir', type=str, default=None, help='Where the train/valid datasets will be saved for training')
     parser.add_argument('--name', type=str, default=None, help='Output name for the train/valid datasets')
-    parser.add_argument('--data', type=str, default=None, help='Where all the generated data is stored')
     parser.add_argument('--asm', type=str, help='Assembler used')
     
     args = parser.parse_args()
     savedir = args.savedir
     name = args.name
     assembler = args.asm
-    data_path = args.data
+    data_path = args.datadir
 
     train_dict, valid_dict = train_valid_chrs.get_train_valid_chrs()
     

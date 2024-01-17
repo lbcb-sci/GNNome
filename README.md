@@ -1,4 +1,4 @@
-# GNNome
+# GNNome 
 
 A framework for training graph neural networks to untangle assembly graphs obtained from OLC-based de novo genome assemblers.
 
@@ -34,30 +34,37 @@ conda create -n gnnome python=3.8 pip
 conda activate gnnome
 ```
 
-#### 2.a Install cmake and zlib
+#### 2a. Install cmake and zlib
 In case you don't already have them installed on your system you can install cmake and zlib inside your conda environment:
 ```bash
 conda install cmake
 conda install zlib
 ```
 
-#### 2.b If you are using CUDA 12.0 or higher, install cudatoolkit v11.0
+#### 2b. If you are using CUDA 12.0 or higher, install cudatoolkit v11.0
 ```bash
 conda install cudatoolkit=11.0
 ```
 
-#### 3a. Install the requirements with pip--for GPU and CUDA 11.0+ (~3 min)
+#### 3. Install the requirements with pip (~3 min)
+
+For GPU and CUDA 11.0+ run:
 ```bash
 pip install -r requirements.txt
 ```
-
-#### 3b. Install the requirements with pip--if you have no GPU (~3 min)
-Note: In this case, we recommend only running inference.
+If you have no GPUs and no CUDA, we recommend running inference only. You can install the requirements with:
 ```bash
 pip install -r requirements_cpu.txt
 ```
 
-#### 4a. Install hifiasm for constructing HiFi assembly graphs
+#### 4. Install tools used for constructing assembly graphs
+```bash
+python install_tools.py
+```
+This will install hifiasm and Raven which are used to generate HiFi and ONT assembly graphs, respectively. It also installs PBSIM which is used for simulating raw reads. All the tools are installed inside the `GNNome/vendor` directory.
+
+
+<!-- #### 4a. Install hifiasm for constructing HiFi assembly graphs
 This tool was tested with the hifiasm version 0.18.8:
 ```bash
 git clone https://github.com/chhylp123/hifiasm.git --branch 0.18.8 --single-branch hifiasm-0.18.8
@@ -72,7 +79,7 @@ git clone https://github.com/lbcb-sci/raven.git --branch print_graphs --single-b
 cd raven-1.8.1
 cmake -S ./ -B./build -DRAVEN_BUILD_EXE=1 -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-```
+``` -->
 
 
 ## Example
@@ -115,16 +122,16 @@ For HiFi data, we recommend using [hifiasm](https://github.com/chhylp123/hifiasm
 
 Run hifiasm with the following command:
 ```bash
-./hifiasm-0.18.8/hifiasm --prt-raw -o <out> -t <threads> -l0 <reads>
+./vendor/hifiasm-0.18.8/hifiasm --prt-raw -o <out> -t <threads> -l0 <reads>
 ```
 where `<reads>` is the path to the sequences in FASTA/FASTQ format, and `<out>` is the prefix for the output files. The GFA graph can then be found in the current directory under the name `<out>.bp.raw.r_utg.gfa`.
 
 ### Construct the assembly graphs from ONT sequences
-For ONT data, we recommend using [Raven]().
+For ONT data, we recommend using [Raven](https://github.com/lbcb-sci/raven).
 
 Run Raven with the following command:
 ```bash
-./raven-1.8.1/builld/bin/raven -t <threads> -p0 <reads> > assembly.fasta
+./vendor/raven-1.8.1/builld/bin/raven -t <threads> -p0 <reads> > assembly.fasta
 ```
 where `<reads>` is the path to the sequences in FASTA/FASTQ format.
 The graph can then be found in the current directory under the name `graph_1.gfa`.
@@ -162,14 +169,54 @@ python inference.py --data <data> --asm <asm> --out <out>
   optional:
     --model <model>
       path to the model used for decoding (deafult: weights/weights.pt)
-
 ```
 
 
 ### Training the network
 
-#### Download the train/valid data
-Link available in the manuscript, will be publicly available before acceptance
+#### Download the training/validation data
+Link to the training/validation is data available in the manuscript. All the data will be publicly available after the acceptance.
+
+#### Generate the training/validation data
+You can generate synthetic training data by first simulating reads with PBSIM and then constructing assembly graphs with hifiasm or Raven. This consists of several steps.
+
+Step 1. Specify which chromosomes you want to have in training and validation set, by editing values in the dictionaries in `train_valid_chrs.py`.
+
+Step 2. Since the training is performed on individual chromosomes, you also need to have the sequences (references) of these chromosomes saved in a format `chr1.fasta`, `chr2.fasta`, etc. Full path to the directory where these chromosome references are stored is provided as an argument to the `generate_data.py` script (see below).
+
+Step 3. PBSIM requires a sample profile files (e.g. `sample_pofile_ID.fastq` and `sample_pofile_ID.stats`) stored inside the `vendor/pbsim3` directory. If you already have these files, copy them into `vendor/pbsim3` and edit the value of the dictionary in `config.py` under the key `sample_pofile_id`. If you don't have them, PBSIM will require a FASTQ file from which it will construct the sample profile, as well as the profile ID under which it will save the created files. For this to be possible, you need to edit values in the dictionary in `config.py` under the keys `sample_pofile_id` and `sample_file`.
+
+Step 4. Finally, run the `generate_data.py` script:
+```bash
+python generate_data.py --datadir <datadir> --chrdir <chrdir> --asm <asm> --threads <threads>
+
+  <datadir>
+    directory where the generated data will be saved
+  <chrdir>
+    directory where the chromosome references are stored
+  <asm>
+    assembler used for the assembly graph construction [hifiasm|raven]
+  <threads>
+    threads used for running the assembler
+```
+
+
+#### Split the generated data into training and validation datasets.
+Once the data has been generated and stored in the main database (the `<datadir>` that you provided in the previous step), you have to split it into training and validation datasets. This will copy data from the main database `<datadir>` into `<savedir>` (see below). Run the following command:
+
+```bash
+python split_data.py --datadir <datadir> --savedir <savedir> --name <name> --asm <asm>
+  <datadir>
+    directory where the generated data is saved
+  <savedir>
+    directory where the trainig/validation datasets will be copied
+  <name>
+    name assigned to the training and validation datasets
+  <asm>
+    assembler used for the assembly graph construction [hifiasm|raven]
+```
+Once all the data is copied, the script will print out the full paths of the training and validation directories. You can provide those paths as arguments to `train.py` script (see the next step).
+
 
 #### Train the model
 ```bash
@@ -185,8 +232,6 @@ python train.py --train <train> --valid <valid> --asm <asm>
   optional:
     --name <name>
       Name of the model that will be trained (default: date/time of execution)
-    --savedir <savedir>
-      Name of the directory where the model and the checkpoints wiil be saved (default: checkpoints/)
     --overfit
       Overfit on the training data
     --resume
@@ -195,10 +240,10 @@ python train.py --train <train> --valid <valid> --asm <asm>
       Dropout for training the model (default: 0)
     --seed <seed>
       Seed for training the model (default: 1)
-    
 ```
 
-By default, the trained models will be saved in the `checkpoints` directory under name of today's date, if options `--name` and `--savedir` are not specified.
+By default, the trained models and checkpointbs will be saved in the `models` and `checkpoints` directories, respectively. This can be changed in `config.py`. The name under which the model and checkpoint are saved is, by default, the timestamp of the run, if argument `--name` is not specified.
+
 
 ## Reproducibility
 All the results in the paper can be reproduced by downloading the relevant data (link in the manuscript) and following the steps in the Usage section. Use the default weights for the model, available under `weights/weights.pt`.

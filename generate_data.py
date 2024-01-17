@@ -9,7 +9,7 @@ from Bio import SeqIO, AlignIO
 
 import graph_dataset
 import train_valid_chrs
-from paths import get_paths
+from config import get_config
 
 
 def change_description_seqreq(file_path):
@@ -77,9 +77,9 @@ def handle_pbsim_output(idx, chrN, chr_raw_path, combo=False):
 
 
 # 1. Simulate the sequences - HiFi
-def simulate_reads_hifi(outdir_path, chrs_path, chr_dict, assembler, pbsim3_dir, sample_profile_id, sample_file_path):
-    print(f'SETUP::simulate')
-    outdir_path = os.path.abspath(outdir_path)
+def simulate_reads_hifi(datadir_path, chrs_path, chr_dict, assembler, pbsim3_dir, sample_profile_id, sample_file_path, depth):
+    print(f'SETUP - simulate')
+    datadir_path = os.path.abspath(datadir_path)
     for chrN_flag, n_need in chr_dict.items():
         if chrN_flag.endswith('_r'):
             continue
@@ -87,17 +87,14 @@ def simulate_reads_hifi(outdir_path, chrs_path, chr_dict, assembler, pbsim3_dir,
             continue
         elif chrN_flag.endswith('_hg002'):
             chrN = chrN_flag[:-6]
-            # chr_path = os.path.join(refs_path, f'HG002', 'hg002_chromosomes')  # TODO: redefine refs path
             chr_seq_path = os.path.join(chrs_path, f'{chrN}.fasta')
-            # sample_file_path = f'/mnt/sod2-project/csb4/wgs/lovro/sequencing_data/HG002/20kb/m64011_190830_220126.sub.fastq'  # TODO: Need to provide this as an argument
-            # sample_profile_id = f'20kb-m64011_190830_220126'  # TODO: Need to provide this as an argument
-            depth = 60
+            # depth = 60
         else:
             print('Give valid suffix!')
             raise Exception
 
-        chr_raw_path = os.path.join(outdir_path, f'{chrN}/raw')
-        chr_processed_path = os.path.join(outdir_path, f'{chrN}/{assembler}/processed')
+        chr_raw_path = os.path.join(datadir_path, f'{chrN}/raw')
+        chr_processed_path = os.path.join(datadir_path, f'{chrN}/{assembler}/processed')
         if not os.path.isdir(chr_raw_path):
             os.makedirs(chr_raw_path)
         if not os.path.isdir(chr_processed_path):
@@ -112,7 +109,7 @@ def simulate_reads_hifi(outdir_path, chrs_path, chr_dict, assembler, pbsim3_dir,
         if n_need <= n_have:
             continue
         n_diff = n_need - n_have
-        print(f'SETUP::simulate:: Simulate {n_diff} datasets for {chrN_flag} with PBSIM3')
+        print(f'SETUP - simulate: Simulate {n_diff} datasets for {chrN_flag} with PBSIM3')
         for i in range(n_diff):
             idx = n_have + i
             chr_save_path = os.path.join(chr_raw_path, f'{idx}.fasta')
@@ -130,20 +127,13 @@ def simulate_reads_hifi(outdir_path, chrs_path, chr_dict, assembler, pbsim3_dir,
 
 
 # 2. Generate the graphs
-def generate_graphs_hifi(outdir_path, chr_dict, assembler, threads):
-    print(f'SETUP::generate')
-
-    # if 'raven' not in os.listdir('vendor'):
-    #     print(f'SETUP::generate:: Download Raven')
-    #     subprocess.run(f'git clone -b print_graphs https://github.com/lbcb-sci/raven', shell=True, cwd='vendor')
-    #     subprocess.run(f'cmake -S ./ -B./build -DRAVEN_BUILD_EXE=1 -DCMAKE_BUILD_TYPE=Release', shell=True, cwd='vendor/raven')
-    #     subprocess.run(f'cmake --build build', shell=True, cwd='vendor/raven')
-
-    outdir_path = os.path.abspath(outdir_path)
+def generate_graphs_hifi(datadir_path, chr_dict, assembler, threads):
+    print(f'SETUP - generate')
+    datadir_path = os.path.abspath(datadir_path)
     for chrN_flag, n_need in chr_dict.items():
         if chrN_flag.endswith('_hg002'):
             chrN = chrN_flag[:-6]
-            chr_sim_path = os.path.join(outdir_path, f'{chrN}')
+            chr_sim_path = os.path.join(datadir_path, f'{chrN}')
         else:
             print(f'Give valid suffix')
             raise Exception  # TODO: Implement custom exception
@@ -153,31 +143,32 @@ def generate_graphs_hifi(outdir_path, chr_dict, assembler, threads):
         n_raw = len(os.listdir(chr_raw_path))
         n_prc = len(os.listdir(chr_prc_path))
         n_diff = max(0, n_raw - n_prc)
-        print(f'SETUP::generate:: Generate {n_diff} graphs for {chrN}')
+        if n_diff > 0:
+            print(f'SETUP - generate: Generate {n_diff} graphs for {chrN}')
         graph_dataset.AssemblyGraphDataset_HiFi(chr_sim_path, assembler=assembler, threads=threads, generate=True)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--outdir', type=str, help='Where all the generated data is stored')
-    parser.add_argument('--chrs', type=str, help='Path to directory with chromosome references')
+    parser.add_argument('--datadir', type=str, help='Where all the generated data is stored')
+    parser.add_argument('--chrdir', type=str, help='Path to directory with chromosome references')
     parser.add_argument('--asm', type=str, help='Assembler used to construct assembly graphs')
     parser.add_argument('--threads', type=int, default=1, help='Number of threads used for running assemblers')
     args = parser.parse_args()
 
-    chrs_path = args.chrs
+    chrs_path = args.chrdir
     assembler = args.asm
-    outdir_path = args.outdir
+    datadir_path = args.datadir
     threads = args.threads
 
-    paths = get_paths()
-    # TODO: What to do with the sample? Maybe a PBSIM3 config, as a special part in the paths.py? Or an actual config.py?
-    pbsim3_dir = paths['pbsim3_dir']
-    sample_profile_id = paths['sample_profile_id']
+    config = get_config()
+    pbsim3_dir = config['pbsim3_dir']
+    sample_profile_id = config['sample_profile_id']
     assert len(sample_profile_id) > 0, "You need to specify sample_profile_id!"
-    sample_file = paths['sample_file']
+    sample_file = config['sample_file']
+    seq_depth = config['sequencing_depth']
 
     train_chr, valid_chr = train_valid_chrs.get_train_valid_chrs()
     all_chr = merge_dicts(train_chr, valid_chr)
-    simulate_reads_hifi(outdir_path, chrs_path, all_chr, assembler, pbsim3_dir, sample_profile_id, sample_file)
-    generate_graphs_hifi(outdir_path, all_chr, assembler, threads)
+    simulate_reads_hifi(datadir_path, chrs_path, all_chr, assembler, pbsim3_dir, sample_profile_id, sample_file, depth=seq_depth)
+    generate_graphs_hifi(datadir_path, all_chr, assembler, threads)

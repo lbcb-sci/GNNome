@@ -7,7 +7,7 @@ import dgl
 from dgl.data import DGLDataset
 
 import graph_parser
-from paths import get_paths
+from config import get_config
 from utils import preprocess_graph, add_positional_encoding, extract_contigs
 
 
@@ -16,9 +16,8 @@ class AssemblyGraphDataset(DGLDataset):
         self.root = os.path.abspath(root)
         self.assembler = assembler
         self.threads = threads
-
         self.assembly_dir = os.path.join(self.root, self.assembler)
-        print(self.assembly_dir)
+        # print(self.assembly_dir)
 
         if 'raw' not in os.listdir(self.root):
             subprocess.run(f"mkdir 'raw'", shell=True, cwd=self.root)
@@ -34,9 +33,13 @@ class AssemblyGraphDataset(DGLDataset):
         self.output_dir = os.path.join(self.assembly_dir, f'output')
         self.info_dir = os.path.join(self.assembly_dir, f'info')
         
-        paths = get_paths()
-        self.raven_path = paths['raven_path']
-        self.hifiasm_path = paths['hifiasm_path']
+        config = get_config()
+        raven_dir = config['raven_dir']
+        self.raven_path = os.path.join(raven_dir, f'build/bin/raven')
+        self.raven_path = os.path.abspath(self.raven_path)
+        hifiasm_dir = config['hifiasm_dir']
+        self.hifiasm_path = os.path.join(hifiasm_dir, f'hifiasm')
+        self.hifiasm_path = os.path.abspath(self.hifiasm_path)
         
         super().__init__(name='assembly_graphs', raw_dir=raw_dir, save_dir=save_dir)
 

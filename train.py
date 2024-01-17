@@ -20,7 +20,7 @@ import wandb
 
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
-from paths import get_paths
+from config import get_config
 import evaluate
 import models
 import utils
@@ -83,7 +83,7 @@ def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
     return loss
 
 
-def train(train_path, valid_path, out, assembler, savedir=None, overfit=False, dropout=None, seed=None, resume=False):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
@@ -111,14 +111,10 @@ def train(train_path, valid_path, out, assembler, savedir=None, overfit=False, d
     mask_frac_high = hyperparameters['mask_frac_high']
     use_symmetry_loss = hyperparameters['use_symmetry_loss']
     alpha = hyperparameters['alpha']    
-    paths = get_paths()
-    
-    if savedir is None:
-        checkpoints_path = paths['checkpoints_path']
-        models_path = paths['models_path']
-    else:
-        checkpoints_path = os.path.join(savedir, 'checkpoints')
-        models_path = os.path.join(savedir, 'models')
+
+    config = get_config()
+    checkpoints_path = os.path.abspath(config['checkpoints_path'])
+    models_path = os.path.abspath(config['models_path'])
 
     print(f'----- TRAIN -----')
     print(f'\nSaving checkpoints: {checkpoints_path}')
@@ -126,7 +122,8 @@ def train(train_path, valid_path, out, assembler, savedir=None, overfit=False, d
     
     print(f'USING SEED: {seed}')
 
-    torch.cuda.set_device(device)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(device)
     utils.set_seed(seed)
 
     time_start = datetime.now()
@@ -795,15 +792,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
-    parser.add_argument('--savedir', type=str, default=None, help='Directory to save the model and the checkpoints')
+    # parser.add_argument('--savedir', type=str, default=None, help='Directory to save the model and the checkpoints')
     args = parser.parse_args()
-    
-    if args.savedir is None:
-        save_dir = 'checkpoints'
-    else:
-        save_dir = args.savedir
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-        
 
-    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, dropout=args.dropout, seed=args.seed, resume=args.resume, savedir=save_dir)
+    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, dropout=args.dropout, seed=args.seed, resume=args.resume)
