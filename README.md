@@ -86,10 +86,10 @@ cmake --build build
 
 The data needed to run the experiments consists of simulated E. coli reads (FASTA format) and an assembly graph of those reads generated with hifiasm (GFA format). Both can be found in the `example` directory. To pipeline consists of two steps
 
-#### 1. Construct the assembly graph with hifiasm
+#### 1. Construct the assembly graph with hifiasm (<1 min)
 ```bash
 mkdir -p example/hifiasm/output
-./hifiasm-0.18.8/hifiasm --prt-raw -o example/hifiasm/output/ecoli_asm -t32 -l0 example/ecoli.fasta.gz
+./vendor/hifiasm-0.18.8/hifiasm --prt-raw -o example/hifiasm/output/ecoli_asm -t32 -l0 example/ecoli.fasta.gz
 ```
 
 #### 2. Construct the neccesary data structures (DGL graphs and auxiliary dictionaries). (<1 min)
