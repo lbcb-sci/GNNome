@@ -84,7 +84,7 @@ cmake --build build
 
 ## Example
 
-The data needed to run the experiments consists of simulated E. coli reads (FASTA format) and an assembly graph of those reads generated with hifiasm (GFA format). Both can be found in the `example` directory. To pipeline consists of two steps
+The data needed to run the example consists of simulated E. coli reads (FASTA format) and an assembly graph of those reads generated with hifiasm (GFA format). Both can be found in the `example` directory. To run the example, there are three steps:
 
 #### 1. Construct the assembly graph with hifiasm (<1 min)
 ```bash
@@ -96,7 +96,7 @@ mkdir -p example/hifiasm/output
 ```bash
 python create_inference_graphs.py --reads example/ecoli.fasta.gz --gfa example/hifiasm/output/ecoli_asm.bp.raw.r_utg.gfa --asm hifiasm --out example
 ```
-This command will create the following data inside the `example/hifiasm` directory.
+The last command will create the following data inside the `example/hifiasm` directory.
 - a DGL graph inside `example/hifiasm/processed` directory
 - auxiliary data inside `example/hifiasm/info` directory
 
@@ -191,13 +191,13 @@ Step 4. Finally, run the `generate_data.py` script:
 python generate_data.py --datadir <datadir> --chrdir <chrdir> --asm <asm> --threads <threads>
 
   <datadir>
-    directory where the generated data will be saved
+    path to directory where the generated data will be saved
   <chrdir>
-    directory where the chromosome references are stored
+    path to directory where the chromosome references are stored
   <asm>
     assembler used for the assembly graph construction [hifiasm|raven]
   <threads>
-    threads used for running the assembler
+    number of threads used for running the assembler
 ```
 
 
@@ -207,9 +207,9 @@ Once the data has been generated and stored in the main database (the `<datadir>
 ```bash
 python split_data.py --datadir <datadir> --savedir <savedir> --name <name> --asm <asm>
   <datadir>
-    directory where the generated data is saved
+    path to directory where the generated data is saved
   <savedir>
-    directory where the trainig/validation datasets will be copied
+    path to directory where the trainig/validation datasets will be copied
   <name>
     name assigned to the training and validation datasets
   <asm>
@@ -223,23 +223,23 @@ Once all the data is copied, the script will print out the full paths of the tra
 python train.py --train <train> --valid <valid> --asm <asm>
   
   <train>
-    Path to the training data
+    Ppth to directory where the training data (provided by split_data.py)
   <valid>
-    Path to the validation data
+    path to directory where the validation data (provided by split_data.py)
   <asm>
-    Assembler used to generate the training data [hifiasm|raven]
+    assembler used to generate the training data [hifiasm|raven]
 
   optional:
     --name <name>
-      Name of the model that will be trained (default: date/time of execution)
+      name of the model that will be trained (default: date/time of execution)
     --overfit
-      Overfit on the training data
+      overfit on the training data
     --resume
-      Resume from a checkpoint, the <name> option has to be specified
+      resume from a checkpoint, the <name> option has to be specified
     --dropout <dropout>
-      Dropout for training the model (default: 0)
+      dropout for training the model (default: 0)
     --seed <seed>
-      Seed for training the model (default: 1)
+      seed for training the model (default: 1)
 ```
 
 By default, the trained models and checkpointbs will be saved in the `models` and `checkpoints` directories, respectively. This can be changed in `config.py`. The name under which the model and checkpoint are saved is, by default, the timestamp of the run, if argument `--name` is not specified.

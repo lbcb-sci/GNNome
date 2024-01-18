@@ -101,10 +101,10 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datadir', type=str, default=None, help='Where all the generated data is stored')
-    parser.add_argument('--savedir', type=str, default=None, help='Where the train/valid datasets will be saved for training')
-    parser.add_argument('--name', type=str, default=None, help='Output name for the train/valid datasets')
-    parser.add_argument('--asm', type=str, help='Assembler used')
+    parser.add_argument('--datadir', type=str, default=None, help='path to directory where the generated data is saved')
+    parser.add_argument('--savedir', type=str, default=None, help='path to directory where the trainig/validation datasets will be copied')
+    parser.add_argument('--name', type=str, default=None, help='name assigned to the training and validation datasets')
+    parser.add_argument('--asm', type=str, help='assembler used for the assembly graph construction [hifiasm|raven]')
     
     args = parser.parse_args()
     savedir = args.savedir

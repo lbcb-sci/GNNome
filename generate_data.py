@@ -80,6 +80,7 @@ def handle_pbsim_output(idx, chrN, chr_raw_path, combo=False):
 def simulate_reads_hifi(datadir_path, chrs_path, chr_dict, assembler, pbsim3_dir, sample_profile_id, sample_file_path, depth):
     print(f'SETUP - simulate')
     datadir_path = os.path.abspath(datadir_path)
+    chrs_path = os.path.abspath(chrs_path)
     for chrN_flag, n_need in chr_dict.items():
         if chrN_flag.endswith('_r'):
             continue
@@ -150,10 +151,10 @@ def generate_graphs_hifi(datadir_path, chr_dict, assembler, threads):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datadir', type=str, help='Where all the generated data is stored')
-    parser.add_argument('--chrdir', type=str, help='Path to directory with chromosome references')
-    parser.add_argument('--asm', type=str, help='Assembler used to construct assembly graphs')
-    parser.add_argument('--threads', type=int, default=1, help='Number of threads used for running assemblers')
+    parser.add_argument('--datadir', type=str, help='path to directory where the generated data will be saved')
+    parser.add_argument('--chrdir', type=str, help='path to directory where the chromosome references are stored')
+    parser.add_argument('--asm', type=str, help='assembler used for the assembly graph construction [hifiasm|raven]')
+    parser.add_argument('--threads', type=int, default=1, help='number of threads used for running the assembler')
     args = parser.parse_args()
 
     chrs_path = args.chrdir
