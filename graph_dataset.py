@@ -48,11 +48,12 @@ class AssemblyGraphDataset(DGLDataset):
             for file in os.listdir(self.save_dir):
                 idx = int(file[:-4])
                 graph = dgl.load_graphs(os.path.join(self.save_dir, file))[0][0]
-                graph = preprocess_graph(graph, self.root, idx)
+                graph = preprocess_graph(graph)
                 graph = add_positional_encoding(graph)
-                print(f'DGL graph idx={idx} info:\n',graph)
+                # print(f'DGL graph idx={idx} info:\n',graph)
                 self.graph_list.append((idx, graph))
             self.graph_list.sort(key=lambda x: x[0])
+            print(f'Number of graphs in the dataset: {len(self.graph_list)}')
 
     def has_cache(self):
         """Check if the raw data is already processed and stored."""

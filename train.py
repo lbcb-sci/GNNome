@@ -1,27 +1,21 @@
 import argparse
 from datetime import datetime
-import copy
 import os
-import pickle
 import random
 import re
 
-from tqdm import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.nn.functional import kl_div
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import profile, record_function, ProfilerActivity
+# from torch.profiler import profile, record_function, ProfilerActivity
 import dgl
-from dgl.dataloading import GraphDataLoader
 import wandb
 
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 from config import get_config
-import evaluate
 import models
 import utils
 from inference import inference
@@ -719,37 +713,37 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         scheduler.step(valid_loss_epoch)
 
                     # Code that evalates NGA50 during training -- only for overfitting
-                    plot_nga50_during_training = hyperparameters['plot_nga50_during_training']
-                    i = hyperparameters['chr_overfit']
-                    eval_frequency = hyperparameters['eval_frequency']
-                    if overfit and plot_nga50_during_training and (epoch+1) % eval_frequency == 0:
-                        # call inference
-                        refs_path = hyperparameters['refs_path']
-                        save_dir = os.path.join(train_path, assembler)
-                        if not os.path.isdir(save_dir):
-                            os.makedirs(save_dir)
-                        if not os.path.isdir(os.path.join(save_dir, f'assembly')):
-                            os.mkdir(os.path.join(save_dir, f'assembly'))
-                        if not os.path.isdir(os.path.join(save_dir, f'inference')):
-                            os.mkdir(os.path.join(save_dir, f'inference'))
-                        if not os.path.isdir(os.path.join(save_dir, f'reports')):
-                            os.mkdir(os.path.join(save_dir, f'reports'))
-                        inference(train_path, model_path, assembler, save_dir)
-                        # call evaluate
-                        ref = os.path.join(refs_path, 'chromosomes', f'chr{i}.fasta')
-                        idx = os.path.join(refs_path, 'indexed', f'chr{i}.fasta.fai')
-                        asm = os.path.join(save_dir, f'assembly', f'0_assembly.fasta')
-                        report = os.path.join(save_dir, f'reports', '0_minigraph.txt')
-                        paf = os.path.join(save_dir, f'asm.paf')
-                        p = evaluate.run_minigraph(ref, asm, paf)
-                        p.wait()
-                        p = evaluate.parse_pafs(idx, report, paf)
-                        p.wait()
-                        with open(report) as f:
-                            text = f.read()
-                            ng50 = int(re.findall(r'NG50\s*(\d+)', text)[0])
-                            nga50 = int(re.findall(r'NGA50\s*(\d+)', text)[0])
-                            print(f'NG50: {ng50}\tNGA50: {nga50}')
+                    # plot_nga50_during_training = hyperparameters['plot_nga50_during_training']
+                    # i = hyperparameters['chr_overfit']
+                    # eval_frequency = hyperparameters['eval_frequency']
+                    # if overfit and plot_nga50_during_training and (epoch+1) % eval_frequency == 0:
+                    #     # call inference
+                    #     refs_path = hyperparameters['refs_path']
+                    #     save_dir = os.path.join(train_path, assembler)
+                    #     if not os.path.isdir(save_dir):
+                    #         os.makedirs(save_dir)
+                    #     if not os.path.isdir(os.path.join(save_dir, f'assembly')):
+                    #         os.mkdir(os.path.join(save_dir, f'assembly'))
+                    #     if not os.path.isdir(os.path.join(save_dir, f'inference')):
+                    #         os.mkdir(os.path.join(save_dir, f'inference'))
+                    #     if not os.path.isdir(os.path.join(save_dir, f'reports')):
+                    #         os.mkdir(os.path.join(save_dir, f'reports'))
+                    #     inference(train_path, model_path, assembler, save_dir)
+                    #     # call evaluate
+                    #     ref = os.path.join(refs_path, 'chromosomes', f'chr{i}.fasta')
+                    #     idx = os.path.join(refs_path, 'indexed', f'chr{i}.fasta.fai')
+                    #     asm = os.path.join(save_dir, f'assembly', f'0_assembly.fasta')
+                    #     report = os.path.join(save_dir, f'reports', '0_minigraph.txt')
+                    #     paf = os.path.join(save_dir, f'asm.paf')
+                    #     p = evaluate.run_minigraph(ref, asm, paf)
+                    #     p.wait()
+                    #     p = evaluate.parse_pafs(idx, report, paf)
+                    #     p.wait()
+                    #     with open(report) as f:
+                    #         text = f.read()
+                    #         ng50 = int(re.findall(r'NG50\s*(\d+)', text)[0])
+                    #         nga50 = int(re.findall(r'NGA50\s*(\d+)', text)[0])
+                    #         print(f'NG50: {ng50}\tNGA50: {nga50}')
 
                     try:
                         if 'nga50' in locals():

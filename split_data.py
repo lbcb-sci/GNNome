@@ -2,10 +2,7 @@ import argparse
 import os
 import pickle
 import subprocess
-import time
 from datetime import datetime
-
-from tqdm import tqdm
 
 import train_valid_chrs
 
@@ -45,7 +42,8 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
             if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
-            print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {train_path}')
+            if n_need > 0:
+                print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {train_path}')
             for i in range(n_need):
                 if '+' in chrN_flag:
                     chrN = chrN_flag
@@ -74,7 +72,8 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
             if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
-            print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {valid_path}')
+            if n_need > 0:
+                print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {valid_path}')
             for i in range(n_need):
                 if '+' in chrN_flag:
                     chrN = chrN_flag

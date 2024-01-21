@@ -2,8 +2,6 @@ import argparse
 import os
 import re
 import subprocess
-import time
-from datetime import datetime
 
 from Bio import SeqIO, AlignIO
 

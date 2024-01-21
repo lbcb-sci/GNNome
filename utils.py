@@ -11,7 +11,6 @@ from Bio import Seq, SeqIO
 from scipy import sparse as sp 
 from sklearn.metrics import precision_recall_curve, average_precision_score
 
-import algorithms
 from hyperparameters import get_hyperparameters
 
 
@@ -57,7 +56,7 @@ def extract_contigs(path, idx):
     # subprocess.run(f'rm {path}/output.csv', shell=True)
 
 
-def preprocess_graph(g, data_path, idx):
+def preprocess_graph(g):
     g = g.int()
     g.ndata['x'] = torch.ones(g.num_nodes(), 1)
     ol_len = g.edata['overlap_length'].float()
