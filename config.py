@@ -1,7 +1,7 @@
 def get_config():
     return {
         'checkpoints_path': 'checkpoints',
-        'models_path': 'models',
+        'models_path': 'checkpoints',
         
         'tool_dir': 'vendor',
         'raven_dir': 'vendor/raven-1.8.1',
