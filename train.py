@@ -206,8 +206,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         
         # min_loss_train = checkpoint['loss_train']
         # min_loss_valid = checkpoint['loss_valid']
-        loss_per_epoch_train.append(min_loss_train)
-        loss_per_epoch_valid.append(min_loss_valid)
+        # loss_per_epoch_train.append(min_loss_train)
+        # loss_per_epoch_valid.append(min_loss_valid)
 
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'Loading data done. Elapsed time: {elapsed}')
@@ -821,7 +821,7 @@ if __name__ == '__main__':
     parser.add_argument('--overfit', action='store_true', help='Overfit on the training data')
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
     parser.add_argument('--finetune', action='store_true', help='Finetune a trained model')
-    parser.add_argument('--ft_model', action='string', help='Path to the model for fine-tuning')
+    parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
     parser.add_argument('--gpu', type=int, default=None, help='GPU')
