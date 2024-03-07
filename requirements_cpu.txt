@@ -127,7 +127,7 @@ tqdm==4.62.2
 traitlets==5.3.0
 typer==0.4.1
 typing-extensions==3.10.0.0
-urllib3==1.26.5
+urllib3==1.26.18
 wandb==0.12.1
 wcwidth==0.2.5
 webencodings==0.5.1
