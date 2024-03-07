@@ -77,7 +77,7 @@ def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
     return loss
 
 
-def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
@@ -186,22 +186,22 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         
     if finetune:
         # ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'  # This should be the checkpoint of the old run
-        checkpoint = torch.load(ckpt_path)
-        print('Loding the checkpoint from:', ckpt_path, sep='\t')
+        # checkpoint = torch.load(ckpt_path)
+        # print('Loding the checkpoint from:', ckpt_path, sep='\t')
         model_path = os.path.join(models_path, f'finetune-model_{out}.pt')
         ckpt_path  = os.path.join(checkpoints_path, f'finetune-ckpt_{out}.pt')
         print('Saving the resumed model to:', model_path, sep='\t')
         print('Saving the new checkpoint to:', ckpt_path, sep='\t')
         
         start_epoch = 0
-        print(f'Resuming from epoch: {start_epoch}')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optim_state_dict'])
+        ft_model = torch.load(ft_model)
+        model.load_state_dict(ft_model)
+        # optimizer.load_state_dict(checkpoint['optim_state_dict'])
         
-        min_loss_train = checkpoint['loss_train']
-        min_loss_valid = checkpoint['loss_valid']
-        loss_per_epoch_train.append(min_loss_train)
-        loss_per_epoch_valid.append(min_loss_valid)
+        # min_loss_train = checkpoint['loss_train']
+        # min_loss_valid = checkpoint['loss_valid']
+        # loss_per_epoch_train.append(min_loss_train)
+        # loss_per_epoch_valid.append(min_loss_valid)
 
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'Loading data done. Elapsed time: {elapsed}')
@@ -815,9 +815,11 @@ if __name__ == '__main__':
     parser.add_argument('--overfit', action='store_true', help='Overfit on the training data')
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
     parser.add_argument('--finetune', action='store_true', help='Finetune a trained model')
+    parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
     # parser.add_argument('--savedir', type=str, default=None, help='Directory to save the model and the checkpoints')
     args = parser.parse_args()
 
-    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune)
+    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, \
+          dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune, ft_model=args.ft_model)
