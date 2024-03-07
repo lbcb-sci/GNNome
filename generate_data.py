@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
     config = get_config()
     pbsim3_dir = config['pbsim3_dir']
-    sample_profile_id = config['sample_profile_id']
+    sample_profile_id = config['sample_profile_ID']
     assert len(sample_profile_id) > 0, "You need to specify sample_profile_id!"
     sample_file = config['sample_file']
     seq_depth = config['sequencing_depth']

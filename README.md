@@ -174,9 +174,6 @@ python inference.py --data <data> --asm <asm> --out <out>
 
 ### Training the network
 
-#### Download the training/validation data
-Link to the training/validation is data available in the manuscript. All the data will be publicly available after the acceptance.
-
 #### Generate the training/validation data
 You can generate synthetic training data by first simulating reads with PBSIM and then constructing assembly graphs with hifiasm or Raven. This consists of several steps.
 
@@ -184,7 +181,11 @@ Step 1. Specify which chromosomes you want to have in training and validation se
 
 Step 2. Since the training is performed on individual chromosomes, you also need to have the sequences (references) of these chromosomes saved in a format `chr1.fasta`, `chr2.fasta`, etc. Full path to the directory where these chromosome references are stored is provided as an argument to the `generate_data.py` script (see below).
 
-Step 3. PBSIM requires a sample profile files (e.g. `sample_pofile_ID.fastq` and `sample_pofile_ID.stats`) stored inside the `vendor/pbsim3` directory. If you already have these files, copy them into `vendor/pbsim3` and edit the value of the dictionary in `config.py` under the key `sample_pofile_id`. If you don't have them, PBSIM will require a FASTQ file from which it will construct the sample profile, as well as the profile ID under which it will save the created files. For this to be possible, you need to edit values in the dictionary in `config.py` under the keys `sample_pofile_id` and `sample_file`.
+Step 3. PBSIM requires a sample profile files (e.g. `sample_pofile_ID.fastq` and `sample_pofile_ID.stats`) stored inside the `vendor/pbsim3` directory. You can download these files by running
+```bash
+bash download_profile.sh
+```
+The downloaded files correspond to the `sample_profile_ID` stated in the `config.py` dictionary. Alternatively, if you already have these files, copy them into `vendor/pbsim3` and edit the value of the dictionary in `config.py` under the key `sample_pofile_ID`. You can also create a new profile by editting values in the dictionary in `config.py` under the keys `sample_pofile_ID` and `sample_file`. Make sure to provide a unique ID for `sample_profile_ID`, and a path to an existing FASTQ file for `sample_file`. For more information, check [PBSIM3](https://github.com/yukiteruono/pbsim3).
 
 Step 4. Finally, run the `generate_data.py` script:
 ```bash
