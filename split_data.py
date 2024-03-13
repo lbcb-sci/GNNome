@@ -2,10 +2,7 @@ import argparse
 import os
 import pickle
 import subprocess
-import time
 from datetime import datetime
-
-from tqdm import tqdm
 
 import train_valid_chrs
 
@@ -45,7 +42,8 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
             if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
-            print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {train_path}')
+            if n_need > 0:
+                print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {train_path}')
             for i in range(n_need):
                 if '+' in chrN_flag:
                     chrN = chrN_flag
@@ -74,7 +72,8 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
             if '_r' in chrN_flag and n_need > 1:  # DEPRECATED
                 print(f'SETUP::split::WARNING Cannot copy more than one graph for real data: {chrN_flag}')
                 n_need = 1
-            print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {valid_path}')
+            if n_need > 0:
+                print(f'SETUP::split:: Copying {n_need} graphs of {chrN_flag} - {assembler} into {valid_path}')
             for i in range(n_need):
                 if '+' in chrN_flag:
                     chrN = chrN_flag
@@ -101,10 +100,10 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datadir', type=str, default=None, help='Where all the generated data is stored')
-    parser.add_argument('--savedir', type=str, default=None, help='Where the train/valid datasets will be saved for training')
-    parser.add_argument('--name', type=str, default=None, help='Output name for the train/valid datasets')
-    parser.add_argument('--asm', type=str, help='Assembler used')
+    parser.add_argument('--datadir', type=str, default=None, help='path to directory where the generated data is saved')
+    parser.add_argument('--savedir', type=str, default=None, help='path to directory where the trainig/validation datasets will be copied')
+    parser.add_argument('--name', type=str, default=None, help='name assigned to the training and validation datasets')
+    parser.add_argument('--asm', type=str, help='assembler used for the assembly graph construction [hifiasm|raven]')
     
     args = parser.parse_args()
     savedir = args.savedir

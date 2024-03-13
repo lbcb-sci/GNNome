@@ -2,37 +2,11 @@ import torch
 
 def get_hyperparameters():
     return {
-
-        # Setup
-        'data_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/hifi/train',
-        'temp_path': '/home/vrcekl/scratch/gnnome_assembly/train',
-        'eval_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/hifi/evaluate',
-        'asms_path': '/home/vrcekl/scratch/gnnome_assembly/evaluate',
-        'refs_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/references',
-        'checkpoints_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/checkpoints',
-        'models_path': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/models',
         
-        'data_path_ont': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/ont/train',
-        'eval_path_ont': '/mnt/sod2-project/csb4/wgs/lovro/gnnome_assembly/ont/evaluate',
-        'asms_path_ont': '/home/vrcekl/scratch/gnnome_assembly/evaluate_ont',
-        
-        'raven_path': '',
-        'hifiasm_path': '',
-        'pbsim3_dir': '',
-        
-        'sample_profile_id': '',
-        'sample_file': '',
-        
-        'assembler': 'hifiasm',
-        'dataset': 'chm13',  # Not used at the moment
-        'initials': 'LV',
-
         'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
         'seed': 1,
         'wandb_mode': 'disabled',  # switch between 'online' and 'disabled'
-        # 'wandb_project': 'GeNNome-hifiasm',
-        'wandb_project': 'hifiasm-runs',
-        # 'wandb_project': 'Sep-23_ablations',
+        'wandb_project': 'GNNome',
 
         'chr_overfit': 0,
         'plot_nga50_during_training': False,
@@ -40,7 +14,6 @@ def get_hyperparameters():
 
         # Data
         'use_similarities': True,
-        # 'pos_to_neg_ratio': 16.5,  # Not used, but could be a hyperparam for loss weight
 
         # Model
         'dim_latent': 64,
@@ -50,7 +23,7 @@ def get_hyperparameters():
         'hidden_edge_features': 16,
         'hidden_edge_scores': 64,
         'nb_pos_enc': 0,
-        'type_pos_enc': 'PR',
+        'type_pos_enc': 'none',
         'batch_norm': True,
         # 'dropout': 0.08,
 

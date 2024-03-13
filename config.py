@@ -1,14 +1,14 @@
 def get_config():
     return {
         'checkpoints_path': 'checkpoints',
-        'models_path': 'models',
+        'models_path': 'checkpoints',
         
         'tool_dir': 'vendor',
         'raven_dir': 'vendor/raven-1.8.1',
         'hifiasm_dir': 'vendor/hifiasm-0.18.8',
         'pbsim3_dir': 'vendor/pbsim3',
         
-        'sample_profile_id': '',
+        'sample_profile_ID': '20kb-m64011_190830_220126',
         'sample_file': '',
         'sequencing_depth': 60,
     }

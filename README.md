@@ -84,7 +84,7 @@ cmake --build build
 
 ## Example
 
-The data needed to run the experiments consists of simulated E. coli reads (FASTA format) and an assembly graph of those reads generated with hifiasm (GFA format). Both can be found in the `example` directory. To pipeline consists of two steps
+The data needed to run the example consists of simulated E. coli reads (FASTA format) and an assembly graph of those reads generated with hifiasm (GFA format). Both can be found in the `example` directory. To run the example, there are three steps:
 
 #### 1. Construct the assembly graph with hifiasm (<1 min)
 ```bash
@@ -96,7 +96,7 @@ mkdir -p example/hifiasm/output
 ```bash
 python create_inference_graphs.py --reads example/ecoli.fasta.gz --gfa example/hifiasm/output/ecoli_asm.bp.raw.r_utg.gfa --asm hifiasm --out example
 ```
-This command will create the following data inside the `example/hifiasm` directory.
+The last command will create the following data inside the `example/hifiasm` directory.
 - a DGL graph inside `example/hifiasm/processed` directory
 - auxiliary data inside `example/hifiasm/info` directory
 
@@ -174,9 +174,6 @@ python inference.py --data <data> --asm <asm> --out <out>
 
 ### Training the network
 
-#### Download the training/validation data
-Link to the training/validation is data available in the manuscript. All the data will be publicly available after the acceptance.
-
 #### Generate the training/validation data
 You can generate synthetic training data by first simulating reads with PBSIM and then constructing assembly graphs with hifiasm or Raven. This consists of several steps.
 
@@ -184,20 +181,24 @@ Step 1. Specify which chromosomes you want to have in training and validation se
 
 Step 2. Since the training is performed on individual chromosomes, you also need to have the sequences (references) of these chromosomes saved in a format `chr1.fasta`, `chr2.fasta`, etc. Full path to the directory where these chromosome references are stored is provided as an argument to the `generate_data.py` script (see below).
 
-Step 3. PBSIM requires a sample profile files (e.g. `sample_pofile_ID.fastq` and `sample_pofile_ID.stats`) stored inside the `vendor/pbsim3` directory. If you already have these files, copy them into `vendor/pbsim3` and edit the value of the dictionary in `config.py` under the key `sample_pofile_id`. If you don't have them, PBSIM will require a FASTQ file from which it will construct the sample profile, as well as the profile ID under which it will save the created files. For this to be possible, you need to edit values in the dictionary in `config.py` under the keys `sample_pofile_id` and `sample_file`.
+Step 3. PBSIM requires a sample profile files (e.g. `sample_pofile_ID.fastq` and `sample_pofile_ID.stats`) stored inside the `vendor/pbsim3` directory. You can download these files by running
+```bash
+bash download_profile.sh
+```
+The downloaded files correspond to the `sample_profile_ID` stated in the `config.py` dictionary. Alternatively, if you already have these files, copy them into `vendor/pbsim3` and edit the value of the dictionary in `config.py` under the key `sample_pofile_ID`. You can also create a new profile by editting values in the dictionary in `config.py` under the keys `sample_pofile_ID` and `sample_file`. Make sure to provide a unique ID for `sample_profile_ID`, and a path to an existing FASTQ file for `sample_file`. For more information, check [PBSIM3](https://github.com/yukiteruono/pbsim3).
 
 Step 4. Finally, run the `generate_data.py` script:
 ```bash
 python generate_data.py --datadir <datadir> --chrdir <chrdir> --asm <asm> --threads <threads>
 
   <datadir>
-    directory where the generated data will be saved
+    path to directory where the generated data will be saved
   <chrdir>
-    directory where the chromosome references are stored
+    path to directory where the chromosome references are stored
   <asm>
     assembler used for the assembly graph construction [hifiasm|raven]
   <threads>
-    threads used for running the assembler
+    number of threads used for running the assembler
 ```
 
 
@@ -207,9 +208,9 @@ Once the data has been generated and stored in the main database (the `<datadir>
 ```bash
 python split_data.py --datadir <datadir> --savedir <savedir> --name <name> --asm <asm>
   <datadir>
-    directory where the generated data is saved
+    path to directory where the generated data is saved
   <savedir>
-    directory where the trainig/validation datasets will be copied
+    path to directory where the trainig/validation datasets will be copied
   <name>
     name assigned to the training and validation datasets
   <asm>
@@ -223,23 +224,23 @@ Once all the data is copied, the script will print out the full paths of the tra
 python train.py --train <train> --valid <valid> --asm <asm>
   
   <train>
-    Path to the training data
+    Ppth to directory where the training data (provided by split_data.py)
   <valid>
-    Path to the validation data
+    path to directory where the validation data (provided by split_data.py)
   <asm>
-    Assembler used to generate the training data [hifiasm|raven]
+    assembler used to generate the training data [hifiasm|raven]
 
   optional:
     --name <name>
-      Name of the model that will be trained (default: date/time of execution)
+      name of the model that will be trained (default: date/time of execution)
     --overfit
-      Overfit on the training data
+      overfit on the training data
     --resume
-      Resume from a checkpoint, the <name> option has to be specified
+      resume from a checkpoint, the <name> option has to be specified
     --dropout <dropout>
-      Dropout for training the model (default: 0)
+      dropout for training the model (default: 0)
     --seed <seed>
-      Seed for training the model (default: 1)
+      seed for training the model (default: 1)
 ```
 
 By default, the trained models and checkpointbs will be saved in the `models` and `checkpoints` directories, respectively. This can be changed in `config.py`. The name under which the model and checkpoint are saved is, by default, the timestamp of the run, if argument `--name` is not specified.

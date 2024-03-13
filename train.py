@@ -1,27 +1,21 @@
 import argparse
 from datetime import datetime
-import copy
 import os
-import pickle
 import random
 import re
 
-from tqdm import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.nn.functional import kl_div
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.profiler import profile, record_function, ProfilerActivity
+# from torch.profiler import profile, record_function, ProfilerActivity
 import dgl
-from dgl.dataloading import GraphDataLoader
 import wandb
 
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 from config import get_config
-import evaluate
 import models
 import utils
 from inference import inference
@@ -83,7 +77,7 @@ def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
     return loss
 
 
-def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
@@ -140,7 +134,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     else:
         ds_train = ds_valid = AssemblyGraphDataset(train_path, assembler=assembler)
 
-    pos_to_neg_ratio = sum([((g.edata['y']==1).sum() / (g.edata['y']==0).sum()).item() for idx, g in ds_train]) / len(ds_train)
+    pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for idx, g in ds_train]) / len(ds_train)
 
     model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
     model.to(device)
@@ -150,9 +144,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
     out = out + f'_seed{seed}'
 
-    model_path = os.path.join(models_path, f'model_{out}.pt')  # TODO: Delete this?
-    model_min_loss_path = os.path.join(models_path, f'model_min-loss_{out}.pt')
-    
+    model_path = os.path.join(models_path, f'model_{out}.pt')    
     print(f'MODEL PATH: {model_path}')
     
     ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'
@@ -191,6 +183,25 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         min_loss_valid = checkpoint['loss_valid']
         loss_per_epoch_train.append(min_loss_train)
         loss_per_epoch_valid.append(min_loss_valid)
+        
+    if finetune:
+        # ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'  # This should be the checkpoint of the old run
+        # checkpoint = torch.load(ckpt_path)
+        # print('Loding the checkpoint from:', ckpt_path, sep='\t')
+        model_path = os.path.join(models_path, f'finetune-model_{out}.pt')
+        ckpt_path  = os.path.join(checkpoints_path, f'finetune-ckpt_{out}.pt')
+        print('Saving the resumed model to:', model_path, sep='\t')
+        print('Saving the new checkpoint to:', ckpt_path, sep='\t')
+        
+        start_epoch = 0
+        ft_model = torch.load(ft_model)
+        model.load_state_dict(ft_model)
+        # optimizer.load_state_dict(checkpoint['optim_state_dict'])
+        
+        # min_loss_train = checkpoint['loss_train']
+        # min_loss_valid = checkpoint['loss_valid']
+        # loss_per_epoch_train.append(min_loss_train)
+        # loss_per_epoch_valid.append(min_loss_valid)
 
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'Loading data done. Elapsed time: {elapsed}')
@@ -710,57 +721,70 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                     print(f'Elapsed time total: {elapsed}\n\n')
 
                     if not overfit:
-                        # Choose the model with minimal loss on validation set
-                        if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_valid) > 1 and loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
-                            torch.save(model.state_dict(), model_min_loss_path)
-                            print(f'Epoch {epoch:3}: Model MIN-LOSS saved! -> Val Loss = {valid_loss_epoch:.6f}\tVal F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
-                                  f'\tVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\t')
-                        save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
-                        scheduler.step(valid_loss_epoch)
+                        if finetune:
+                            if (epoch+1) % 50 == 0:
+                                model_tmp_path = os.path.join(models_path, f'finetune-model-epoch{epoch}_{out}.pt')
+                                torch.save(model.state_dict(), model_tmp_path)
+                            # Choose the model with minimal loss on validation set
+                            if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_valid) > 1 and loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
+                                torch.save(model.state_dict(), model_path)
+                                print(f'Epoch {epoch:3}: Model MIN-LOSS saved! -> Val Loss = {valid_loss_epoch:.6f}\tVal F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
+                                    f'\tVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\t')
+                            save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
+                            scheduler.step(valid_loss_epoch)
+                        else:
+                            # Choose the model with minimal loss on validation set
+                            if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_valid) > 1 and loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
+                                torch.save(model.state_dict(), model_path)
+                                print(f'Epoch {epoch:3}: Model MIN-LOSS saved! -> Val Loss = {valid_loss_epoch:.6f}\tVal F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
+                                    f'\tVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\t')
+                            save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
+                            scheduler.step(valid_loss_epoch)
 
                     # Code that evalates NGA50 during training -- only for overfitting
-                    plot_nga50_during_training = hyperparameters['plot_nga50_during_training']
-                    i = hyperparameters['chr_overfit']
-                    eval_frequency = hyperparameters['eval_frequency']
-                    if overfit and plot_nga50_during_training and (epoch+1) % eval_frequency == 0:
-                        # call inference
-                        refs_path = hyperparameters['refs_path']
-                        save_dir = os.path.join(train_path, assembler)
-                        if not os.path.isdir(save_dir):
-                            os.makedirs(save_dir)
-                        if not os.path.isdir(os.path.join(save_dir, f'assembly')):
-                            os.mkdir(os.path.join(save_dir, f'assembly'))
-                        if not os.path.isdir(os.path.join(save_dir, f'inference')):
-                            os.mkdir(os.path.join(save_dir, f'inference'))
-                        if not os.path.isdir(os.path.join(save_dir, f'reports')):
-                            os.mkdir(os.path.join(save_dir, f'reports'))
-                        inference(train_path, model_path, assembler, save_dir)
-                        # call evaluate
-                        ref = os.path.join(refs_path, 'chromosomes', f'chr{i}.fasta')
-                        idx = os.path.join(refs_path, 'indexed', f'chr{i}.fasta.fai')
-                        asm = os.path.join(save_dir, f'assembly', f'0_assembly.fasta')
-                        report = os.path.join(save_dir, f'reports', '0_minigraph.txt')
-                        paf = os.path.join(save_dir, f'asm.paf')
-                        p = evaluate.run_minigraph(ref, asm, paf)
-                        p.wait()
-                        p = evaluate.parse_pafs(idx, report, paf)
-                        p.wait()
-                        with open(report) as f:
-                            text = f.read()
-                            ng50 = int(re.findall(r'NG50\s*(\d+)', text)[0])
-                            nga50 = int(re.findall(r'NGA50\s*(\d+)', text)[0])
-                            print(f'NG50: {ng50}\tNGA50: {nga50}')
+                    # plot_nga50_during_training = hyperparameters['plot_nga50_during_training']
+                    # i = hyperparameters['chr_overfit']
+                    # eval_frequency = hyperparameters['eval_frequency']
+                    # if overfit and plot_nga50_during_training and (epoch+1) % eval_frequency == 0:
+                    #     # call inference
+                    #     refs_path = hyperparameters['refs_path']
+                    #     save_dir = os.path.join(train_path, assembler)
+                    #     if not os.path.isdir(save_dir):
+                    #         os.makedirs(save_dir)
+                    #     if not os.path.isdir(os.path.join(save_dir, f'assembly')):
+                    #         os.mkdir(os.path.join(save_dir, f'assembly'))
+                    #     if not os.path.isdir(os.path.join(save_dir, f'inference')):
+                    #         os.mkdir(os.path.join(save_dir, f'inference'))
+                    #     if not os.path.isdir(os.path.join(save_dir, f'reports')):
+                    #         os.mkdir(os.path.join(save_dir, f'reports'))
+                    #     inference(train_path, model_path, assembler, save_dir)
+                    #     # call evaluate
+                    #     ref = os.path.join(refs_path, 'chromosomes', f'chr{i}.fasta')
+                    #     idx = os.path.join(refs_path, 'indexed', f'chr{i}.fasta.fai')
+                    #     asm = os.path.join(save_dir, f'assembly', f'0_assembly.fasta')
+                    #     report = os.path.join(save_dir, f'reports', '0_minigraph.txt')
+                    #     paf = os.path.join(save_dir, f'asm.paf')
+                    #     p = evaluate.run_minigraph(ref, asm, paf)
+                    #     p.wait()
+                    #     p = evaluate.parse_pafs(idx, report, paf)
+                    #     p.wait()
+                    #     with open(report) as f:
+                    #         text = f.read()
+                    #         ng50 = int(re.findall(r'NG50\s*(\d+)', text)[0])
+                    #         nga50 = int(re.findall(r'NGA50\s*(\d+)', text)[0])
+                    #         print(f'NG50: {ng50}\tNGA50: {nga50}')
 
                     try:
                         if 'nga50' in locals():
-                            wandb.log({'train_loss': train_loss_all_graphs, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
-                                       'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
-                                       'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
-                                       'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
-                                       'valid_acc_aggr': valid_acc_epoch, 'valid_precision_aggr': valid_precision_epoch, 'valid_recall_aggr': valid_recall_epoch, 'valid_f1_aggr': valid_f1_epoch, \
-                                       'train_precision_inv_aggr': train_precision_inv_epoch, 'train_recall_inv_aggr': train_recall_inv_epoch, 'train_f1_inv_aggr': train_f1_inv_epoch, \
-                                       'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch, \
-                                       'NG50': ng50, 'NGA50': nga50})
+                            pass
+                            # wandb.log({'train_loss': train_loss_all_graphs, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
+                            #            'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
+                            #            'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
+                            #            'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
+                            #            'valid_acc_aggr': valid_acc_epoch, 'valid_precision_aggr': valid_precision_epoch, 'valid_recall_aggr': valid_recall_epoch, 'valid_f1_aggr': valid_f1_epoch, \
+                            #            'train_precision_inv_aggr': train_precision_inv_epoch, 'train_recall_inv_aggr': train_recall_inv_epoch, 'train_f1_inv_aggr': train_f1_inv_epoch, \
+                            #            'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch, \
+                            #            'NG50': ng50, 'NGA50': nga50})
                         else:
                             wandb.log({'train_loss': train_loss_all_graphs, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
                                        'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
@@ -790,9 +814,12 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default=None, help='Name for the model')
     parser.add_argument('--overfit', action='store_true', help='Overfit on the training data')
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
+    parser.add_argument('--finetune', action='store_true', help='Finetune a trained model')
+    parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
     # parser.add_argument('--savedir', type=str, default=None, help='Directory to save the model and the checkpoints')
     args = parser.parse_args()
 
-    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, dropout=args.dropout, seed=args.seed, resume=args.resume)
+    train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, \
+          dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune, ft_model=args.ft_model)
