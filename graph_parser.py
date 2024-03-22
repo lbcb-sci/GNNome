@@ -1,7 +1,7 @@
 import gzip
 import re
 import time
-from collections import deque, defaultdict
+from collections import Counter
 from datetime import datetime
 
 from Bio import SeqIO
@@ -184,25 +184,64 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 read_lengths[virt_idx] = length
 
                 if id.startswith('utg'):
-                    line = all_lines[line_idx]
-                    line = line.strip().split()
-                    line_idx += 1
-                    tag = line[0]
-                    utg_id = line[1]
-                    utg_to_read = line[4]
-                    assert tag == 'A', 'Line should start with A!'
-                    assert id == utg_id, 'Unitig IDs should be the same!'
-                    id = utg_to_read
-                    read_to_node2[id] = (real_idx, virt_idx)
+                    # The issue here is that in some cases, one unitig can consist of more than one read
+                    # So this is the adapted version of the code that supports that
+                    # The only things of importance here are read_to_node2 dict (not overly used)
+                    # And id variable which I use for obtaining positions during training (for the labels)
+                    # I don't use it for anything else, which is good
+                    ids = []
+                    while True:
+                        line = all_lines[line_idx]
+                        line = line.strip().split()
+                        if line[0] != 'A':
+                            break
+                        line_idx += 1
+                        tag = line[0]
+                        utg_id = line[1]
+                        utg_to_read = line[4]
+                        ids.append(utg_to_read)
+                        read_to_node2[utg_to_read] = (real_idx, virt_idx)
+
+                    id = ids
+                    node_to_read[real_idx] = id
+                    node_to_read[virt_idx] = id
 
                 if training:
-                    description = read_headers[id]
-                    # desc_id, strand, start, end = description.split()
-                    strand = re.findall(r'strand=(\+|\-)', description)[0]
-                    strand = 1 if strand == '+' else -1
-                    start = int(re.findall(r'start=(\d+)', description)[0])  # untrimmed
-                    end = int(re.findall(r'end=(\d+)', description)[0])  # untrimmed
-                    chromosome = int(re.findall(r'chr=(\d+)', description)[0])
+
+                    if type(id) != list:
+                        description = read_headers[id]
+                        # desc_id, strand, start, end = description.split()
+                        strand = re.findall(r'strand=(\+|\-)', description)[0]
+                        strand = 1 if strand == '+' else -1
+                        start = int(re.findall(r'start=(\d+)', description)[0])  # untrimmed
+                        end = int(re.findall(r'end=(\d+)', description)[0])  # untrimmed
+                        chromosome = int(re.findall(r'chr=(\d+)', description)[0])
+
+                    else:
+                        strands = []
+                        starts = []
+                        ends = []
+                        chromosomes = []
+                        for id_r in id:
+                            description = read_headers[id_r]
+                            # desc_id, strand, start, end = description.split()
+                            strand = re.findall(r'strand=(\+|\-)', description)[0]
+                            strand = 1 if strand == '+' else -1
+                            strands.append(strand)
+                            start = int(re.findall(r'start=(\d+)', description)[0])  # untrimmed
+                            starts.append(start)
+                            end = int(re.findall(r'end=(\d+)', description)[0])  # untrimmed
+                            ends.append(end)
+                            chromosome = int(re.findall(r'chr=(\d+)', description)[0])
+                            chromosomes.append(chromosome)
+
+                        # What if they come from different strands but are all merged in a single unitig?
+                        # Or even worse, different chromosomes? How do you handle that?
+                        # I don't think you can. It's an error in the graph
+                        strand = 1 if sum(strands) >= 0 else -1
+                        start = min(starts)
+                        end = max(ends)
+                        chromosome = Counter(chromosomes).most_common()[0][0]
 
                     read_strands[real_idx], read_strands[virt_idx] = strand, -strand
                     read_starts[real_idx] = read_starts[virt_idx] = start
@@ -212,7 +251,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 node_idx += 2
 
             if line[0] == 'L':
-
                 if len(line) == 6:
                     # raven, normal GFA 1 standard
                     tag, id1, orient1, id2, orient2, cigar = line
@@ -351,4 +389,7 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
     if len(read_to_node2) != 0:
         read_to_node = read_to_node2
 
-    return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, labels
+    if 'node_to_read' in locals():
+        return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, node_to_read, labels
+    else:
+        return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, None, labels

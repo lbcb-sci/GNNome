@@ -10,7 +10,7 @@ def create_inference_graph(gfa_path, reads_path, out_dir, assembler):
     assert os.path.isfile(reads_path), "Reads not found!"
 
     print(f'Starting to parse assembler output')
-    graph, pred, succ, reads, edges, read_to_node, _ = graph_parser.only_from_gfa(gfa_path, training=False, reads_path=reads_path, get_similarities=True)
+    graph, pred, succ, reads, edges, read_to_node, node_to_read, _ = graph_parser.only_from_gfa(gfa_path, training=False, reads_path=reads_path, get_similarities=True)
     print(f'Parsed assembler output! Saving files...')
 
     out_dir = os.path.join(out_dir, assembler)
@@ -31,6 +31,8 @@ def create_inference_graph(gfa_path, reads_path, out_dir, assembler):
     pickle.dump(reads, open(f'{info_dir}/0_reads.pkl', 'wb'))
     pickle.dump(edges, open(f'{info_dir}/0_edges.pkl', 'wb'))
     pickle.dump(read_to_node, open(f'{info_dir}/0_read_to_node.pkl', 'wb'))
+    if node_to_read is not None:
+        pickle.dump(node_to_read, open(f'{info_dir}/0_node_to_read.pkl', 'wb'))
     print(f'Processing of graph done!\n')
 
 
