@@ -23,6 +23,7 @@ import evaluate
 import utils
 
 DEBUG = False
+RANDOM = False
 
 
 def get_contig_length(walk, graph):
@@ -54,8 +55,7 @@ def sample_edges(prob_edges, nb_paths):
     if prob_edges.shape[0] > 2**24:
         prob_edges = prob_edges[:2**24]  # torch.distributions.categorical.Categorical does not support tensors longer than 2**24
         
-    random_search = False
-    if random_search:
+    if RANDOM:
         idx_edges = torch.randint(0, prob_edges.shape[0], (nb_paths,))
         return idx_edges
     
@@ -93,7 +93,14 @@ def greedy_forwards(start, logProbs, neighbors, predecessors, edges, visited_old
         if not neighbor_edges:
             break
         neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        if RANDOM:
+            index = torch.randint(0, neighbor_p.shape[0], (1,))
+            logProb = neighbor_p[index]
+        else:
+            logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        # logProb, index = torch.topk(neighbor_p, k=1, dim=0)
         sumLogProb += logProb
         iteration += 1
         current = masked_neighbors[index]
@@ -127,7 +134,14 @@ def greedy_backwards_rc(start, logProbs, predecessors, neighbors, edges, visited
         if not neighbor_edges:
             break
         neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        if RANDOM:
+            index = torch.randint(0, neighbor_p.shape[0], (1,))
+            logProb = neighbor_p[index]
+        else:
+            logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        # logProb, index = torch.topk(neighbor_p, k=1, dim=0)
         sumLogProb += logProb
         iteration += 1
         current = masked_neighbors[index]
@@ -359,6 +373,8 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     load_checkpoint = hyperparameters['load_checkpoint']
     threads = hyperparameters['num_threads']
 
+    # random_search = hyperparameters['random_search']
+
     # assembly_path = hyperparameters['asms_path']
 
     device = 'cpu'  # Hardcode, because we cannot do inference on a GPU - usually not enough memory to load the whole graph
@@ -404,6 +420,8 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                 if os.path.isfile(predicts_path):
                     print(f'Loading the scores from:\n{predicts_path}\n')
                     g.edata['score'] = torch.load(predicts_path)
+                elif RANDOM:
+                    g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
                 else:
                     print(f'Loading model parameters from: {model_path}')
                     model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
