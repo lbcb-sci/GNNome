@@ -1,7 +1,8 @@
 import gzip
+import os
 import re
 import time
-from collections import Counter
+from collections import Counter, namedtuple
 from datetime import datetime
 
 from Bio import SeqIO
@@ -109,7 +110,7 @@ def calculate_similarities(edge_ids, read_seqs, overlap_lengths):
     return overlap_similarities
 
 
-def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=False):
+def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=False, paf_path=None):
     if training:
         if reads_path is not None:
             if reads_path.endswith('gz'):
@@ -164,7 +165,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                     tag, id, sequence, length = line
                 if sequence == '*':
                     no_seqs_flag = True
-                    sequence = '*' * int(length[5:])
                 sequence = Seq(sequence)  # This sequence is already trimmed in raven!
                 length = int(length[5:])
 
@@ -198,8 +198,9 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                         line_idx += 1
                         tag = line[0]
                         utg_id = line[1]
+                        read_orientation = line[3]
                         utg_to_read = line[4]
-                        ids.append(utg_to_read)
+                        ids.append((utg_to_read, read_orientation))
                         read_to_node2[utg_to_read] = (real_idx, virt_idx)
 
                     id = ids
@@ -222,11 +223,14 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                         starts = []
                         ends = []
                         chromosomes = []
-                        for id_r in id:
+                        for id_r, id_o in id:
                             description = read_headers[id_r]
                             # desc_id, strand, start, end = description.split()
-                            strand = re.findall(r'strand=(\+|\-)', description)[0]
-                            strand = 1 if strand == '+' else -1
+                            strand_fasta = re.findall(r'strand=(\+|\-)', description)[0]
+                            strand_fasta = 1 if strand_fasta == '+' else -1
+                            strand_gfa = 1 if id_o == '+' else -1
+                            strand = strand_fasta * strand_gfa
+
                             strands.append(strand)
                             start = int(re.findall(r'start=(\d+)', description)[0])  # untrimmed
                             starts.append(start)
@@ -388,6 +392,184 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
     
     if len(read_to_node2) != 0:
         read_to_node = read_to_node2
+
+    if paf_path and os.path.isfile(paf_path):
+        paf = {}
+        # Parse the PAF file
+        with open(paf_path) as f:
+            for line in f.readlines():
+                line = line.strip().split()
+                src, src_len, src_start, src_end = line[:4]
+                strand = line[4]
+                dst, dst_len, dst_start, dst_end = line[5:9]
+                paf[(src, dst)] = (src_len, src_start, src_end, strand, dst_len, dst_start, dst_end)
+
+        edge_paf_info = {}
+        n2r = node_to_read
+        # Iterate over all the edges in the edge list
+        for src, dst in list(edges.keys()):
+            # Find the reads corresponding to the source/destination nodes (works even for collapsed unitigs)
+            src_r = n2r[src]
+            dst_r = n2r[dst]
+            added = False
+            if len(src_r) == 1 and len(dst_r) == 1:
+                # Clear situation, each node is only one read
+                sr, so = src_r[0]
+                dr, do = dst_r[0]
+                if (sr, dr) in paf:
+                    edge_paf_info[(src, dst)] = paf[sr, dr], (so, do)
+                    added = True
+                else:
+                    # Sometimes, overlaps in PAF are not symmetrical, but readB - readA overlap can be inferred from readA - readB
+                    ovlp = paf[dr, sr]
+                    ovlp = ovlp[4:] + ovlp[3:4] + ovlp[:3]  # Change the source-target overlap information
+                    edge_paf_info[(src, dst)] = ovlp, (so, do)
+                    added = True
+            elif len(src_r) > 1 and len(dst_r) == 1:
+                # Source node is a collapsed unitig, have to inspect which read of the source unitig is used for the overlap
+                dr, do = dst_r[0]
+                for sr, so in src_r:
+                    if added:
+                        break
+                    if (sr, dr) in paf.keys():
+                        edge_paf_info[(src, dst)] = paf[sr, dr], (so, do)
+                        added = True
+                    elif (dr, sr) in paf.keys():
+                        ovlp = paf[dr, sr]
+                        ovlp = ovlp[4:] + ovlp[3:4] + ovlp[:3]
+                        edge_paf_info[(src, dst)] = ovlp, (so, do)
+                        added = True
+                    else:
+                        continue
+            elif len(src_r) == 1 and len(dst_r) > 1:
+                # Destination node is a collapsed unitig, have to inspect which read of the destination unitig is used for the overlap
+                sr, so = src_r[0]
+                for dr, do in dst_r:
+                    if added:
+                        break
+                    if (sr, dr) in paf.keys():
+                        edge_paf_info[(src, dst)] = paf[sr, dr], (so, do)
+                        added = True
+                    elif (dr, sr) in paf.keys():
+                        ovlp = paf[dr, sr]
+                        ovlp = ovlp[4:] + ovlp[3:4] + ovlp[:3]
+                        edge_paf_info[(src, dst)] = ovlp, (so, do)
+                        added = True
+                    else:
+                        continue
+            else:
+                # Both node and destination nodes are collapsed unitigs
+                for sr, so in src_r:
+                    if added:
+                        break
+                    for dr, do in dst_r:
+                        if added:
+                            break
+                        if (sr, dr) in paf.keys():
+                            edge_paf_info[(src, dst)] = paf[sr, dr], (so, do)
+                            added = True
+                        elif (dr, sr) in paf.keys():
+                            ovlp = paf[dr, sr]
+                            ovlp = ovlp[4:] + ovlp[3:4] + ovlp[:3]
+                            edge_paf_info[(src, dst)] = ovlp, (so, do)
+                            added = True
+                        else:
+                            continue
+            assert added, 'Edge not assigned PAF line!'
+
+
+        edge_paf_info_new = {}
+        # Create new dictionary, edge_paf_info_new, where all the PAF overlaps will be stored in a desirable src->dst format
+        # This can directly be stored as start/end overlap positions for each _node_ and makes computation of overhangs as features simpler
+        for (src, dst), (overlap, (so, do)) in edge_paf_info.items():
+            so = 1 if so == '+' else -1  # source orientation in GFA
+            do = 1 if do == '+' else -1  # destination orientation in GFA
+            ss = 1 if src % 2 == 0 else -1  # source strand in FASTA
+            ds = 1 if dst % 2 == 0 else -1  # destination strand in FASTA
+
+            src_strand = ss * so
+            dst_strand = ds * do
+
+            l1, s1, e1, o, l2, s2, e2 = overlap
+            l1 = int(l1)
+            s1 = int(s1)
+            e1 = int(e1)
+            l2 = int(l2)
+            s2 = int(s2)
+            e2 = int(e2)
+            overlap = (l1, s1, e1, o, l2, s2, e2)
+
+            if src_strand == 1 and dst_strand == 1:
+                # src=+ & dst=+ -> should result in + overlap orientation
+                assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'  # Make sure that the orientations are correct
+                overlap_new = overlap
+            elif src_strand == -1 and dst_strand == 1:
+                # src=- & dst=+ -> should result in - overlap orientation
+                assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
+                length, start, end = overlap[:3]
+                start_new = length - end
+                end_new = length - start
+                overlap_new = (length, start_new, end_new) + overlap[3:]
+            elif src_strand == 1 and dst_strand == -1:
+                # src=+ & dst=- -> should result in - overlap orientation
+                assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
+                length, start, end = overlap[-3:]
+                start_new = length - end
+                end_new = length - start
+                overlap_new = overlap[:-3] + (length, start_new, end_new)
+            else:
+                # src=- & dst=- -> should result in + overlap orientation
+                assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'
+                length1, start1, end1 = overlap[:3]
+                length2, start2, end2 = overlap[-3:]
+                sign = overlap[3]
+                start1_new = length1 - end1
+                end1_new = length1 - start1
+                start2_new = length2 - end2
+                end2_new = length2 - start2
+                overlap_new = (length1, start1_new, end1_new, sign, length2, start2_new, end2_new)
+
+            edge_paf_info_new[src, dst] = overlap_new, (so, do)
+
+        # In some cases PAF lines for readA - readB overlap are not the same as for readB - readA overlap
+        # This results in some edges getting assigned the prefix-suffix overlaps instead of suffix-prefix
+        # This is a "fix" for that problem, though it relies on the sequence lengths and is not perfect
+        # Ideally it would rely only on PAF entries and the graph topology
+        edge_paf_info_new_new = {}
+        Overlap = namedtuple('Overlap', ['src_len', 'src_start', 'src_end', 'dst_len', 'dst_start', 'dst_end'])
+        for (src, dst), (overlap, (so, do)) in edge_paf_info_new.items():
+            ss = 1 if src % 2 == 0 else -1  # source strand in FASTA
+            ds = 1 if dst % 2 == 0 else -1  # destination strand in FASTA
+            src_strand = ss * so
+            dst_strand = ds * do
+            src_len, src_start, src_end, orientation, dst_len, dst_start, dst_end = overlap
+            if src_end < 0.99 * src_len or dst_start > 0.01 * dst_len:
+                overlap_org, (do_org, so_org) = edge_paf_info_new[dst^1, src^1]
+                src_len2, src_start2, src_end2, orientation2, dst_len2, dst_start2, dst_end2 = overlap_org
+                overlap_new_new = (dst_len2, dst_len2 - dst_end2, dst_len2 - dst_start2, orientation2, src_len2, src_len2 - src_end2, src_len2 - src_start2)
+                # edge_paf_info_new_new[src, dst] = (overlap_new_new, (so, do))
+                edge_paf_info_new_new[src, dst] = Overlap(overlap_new_new[0], overlap_new_new[1], overlap_new_new[2], overlap_new_new[4], overlap_new_new[5], overlap_new_new[6])
+            else:
+                # edge_paf_info_new_new[src, dst] = (overlap, (so, do))
+                edge_paf_info_new_new[src, dst] = Overlap(overlap[0], overlap[1], overlap[2], overlap[4], overlap[5], overlap[6])
+        edge_paf_info = edge_paf_info_new_new
+
+    auxiliary = {
+        'pred': predecessors,
+        'succ': successors,
+        'reads': read_seqs,
+        'edges': edges,
+        'read_to_node': read_to_node,
+    }
+
+    if labels is not None:
+        auxiliary['labels'] = labels
+    if 'node_to_read' in locals():
+        auxiliary['node_to_read'] = node_to_read
+    if 'edge_paf_info' in locals():
+        auxiliary['edge_paf_info'] = edge_paf_info
+
+    return graph_dgl, auxiliary
 
     if 'node_to_read' in locals():
         return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, node_to_read, labels
