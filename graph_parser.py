@@ -16,6 +16,9 @@ from tqdm import tqdm
 import algorithms
 
 
+# Overlap = namedtuple('Overlap', ['src_len', 'src_start', 'src_end', 'dst_len', 'dst_start', 'dst_end'])
+
+
 def get_neighbors(graph):
     """Return neighbors/successors for each node in the graph.
     
@@ -135,9 +138,8 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
 
     read_to_node, node_to_read = {}, {}
     read_to_node2 = {}
-    edges_dict = {}
     read_lengths, read_seqs = {}, {}  # Obtained from the GFA
-    read_idxs, read_strands, read_starts, read_ends, read_chrs = {}, {}, {}, {}, {}  # Obtained from the FASTA/Q headers
+    read_strands, read_starts, read_ends, read_chrs = {}, {}, {}, {}  # Obtained from the FASTA/Q headers
     edge_ids, prefix_lengths, overlap_lengths, overlap_similarities = {}, {}, {}, {}
 
     no_seqs_flag = False
@@ -381,8 +383,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
         nx.set_edge_attributes(graph_nx, overlap_similarities, 'overlap_similarity')
         edge_attrs.append('overlap_similarity')
 
-    # return graph_nx  # DEBUG
-
     # This produces vector-like features (e.g. shape=(num_nodes,))
     graph_dgl = dgl.from_networkx(graph_nx, node_attrs=node_attrs, edge_attrs=edge_attrs)
     
@@ -536,7 +536,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
         # This is a "fix" for that problem, though it relies on the sequence lengths and is not perfect
         # Ideally it would rely only on PAF entries and the graph topology
         edge_paf_info_new_new = {}
-        Overlap = namedtuple('Overlap', ['src_len', 'src_start', 'src_end', 'dst_len', 'dst_start', 'dst_end'])
         for (src, dst), (overlap, (so, do)) in edge_paf_info_new.items():
             ss = 1 if src % 2 == 0 else -1  # source strand in FASTA
             ds = 1 if dst % 2 == 0 else -1  # destination strand in FASTA
@@ -548,10 +547,12 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 src_len2, src_start2, src_end2, orientation2, dst_len2, dst_start2, dst_end2 = overlap_org
                 overlap_new_new = (dst_len2, dst_len2 - dst_end2, dst_len2 - dst_start2, orientation2, src_len2, src_len2 - src_end2, src_len2 - src_start2)
                 # edge_paf_info_new_new[src, dst] = (overlap_new_new, (so, do))
-                edge_paf_info_new_new[src, dst] = Overlap(overlap_new_new[0], overlap_new_new[1], overlap_new_new[2], overlap_new_new[4], overlap_new_new[5], overlap_new_new[6])
+                # Overlaps are stored as (src_len, src_start, src_end, dst_len, dst_start, dst_end)
+                edge_paf_info_new_new[src, dst] = (overlap_new_new[0], overlap_new_new[1], overlap_new_new[2], overlap_new_new[4], overlap_new_new[5], overlap_new_new[6])
             else:
                 # edge_paf_info_new_new[src, dst] = (overlap, (so, do))
-                edge_paf_info_new_new[src, dst] = Overlap(overlap[0], overlap[1], overlap[2], overlap[4], overlap[5], overlap[6])
+                # Overlaps are stored as (src_len, src_start, src_end, dst_len, dst_start, dst_end)
+                edge_paf_info_new_new[src, dst] = (overlap[0], overlap[1], overlap[2], overlap[4], overlap[5], overlap[6])
         edge_paf_info = edge_paf_info_new_new
 
     auxiliary = {
@@ -570,8 +571,3 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
         auxiliary['edge_paf_info'] = edge_paf_info
 
     return graph_dgl, auxiliary
-
-    if 'node_to_read' in locals():
-        return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, node_to_read, labels
-    else:
-        return graph_dgl, predecessors, successors, read_seqs, edges, read_to_node, None, labels

@@ -115,22 +115,12 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
             print(f'\nAssembler generated the graph! Processing...')
             processed_path = os.path.join(self.save_dir, f'{idx}.dgl')
-            # graph, pred, succ, reads, edges, read_to_node, node_to_read, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             graph, auxiliary = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             print(f'Parsed assembler output! Saving files...')
 
             dgl.save_graphs(processed_path, graph)
             for name, data in auxiliary.items():
                 pickle.dump(data, open(f'{self.info_dir}/{idx}_{name}.pkl', 'wb'))
-                
-            # pickle.dump(pred, open(f'{self.info_dir}/{idx}_pred.pkl', 'wb'))
-            # pickle.dump(succ, open(f'{self.info_dir}/{idx}_succ.pkl', 'wb'))
-            # pickle.dump(reads, open(f'{self.info_dir}/{idx}_reads.pkl', 'wb'))
-            # pickle.dump(edges, open(f'{self.info_dir}/{idx}_edges.pkl', 'wb'))
-            # pickle.dump(labels, open(f'{self.info_dir}/{idx}_labels.pkl', 'wb'))
-            # pickle.dump(read_to_node, open(f'{self.info_dir}/{idx}_read_to_node.pkl', 'wb'))
-            # if node_to_read is not None:
-            #     pickle.dump(node_to_read, open(f'{self.info_dir}/{idx}_node_to_read.pkl', 'wb'))
 
             graphia_path = os.path.join(graphia_dir, f'{idx}_graph.txt')
             graph_parser.print_pairwise(graph, graphia_path)
@@ -173,22 +163,12 @@ class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
 
             print(f'\nAssembler generated the graph! Processing...')
             processed_path = os.path.join(self.save_dir, f'{idx}.dgl')
-            # graph, pred, succ, reads, edges, read_to_node, node_to_read, labels = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             graph, auxiliary = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
             print(f'Parsed assembler output! Saving files...')
 
             dgl.save_graphs(processed_path, graph)
             for name, data in auxiliary.items():
                 pickle.dump(data, open(f'{self.info_dir}/{idx}_{name}.pkl', 'wb'))
-
-            # pickle.dump(pred, open(f'{self.info_dir}/{idx}_pred.pkl', 'wb'))
-            # pickle.dump(succ, open(f'{self.info_dir}/{idx}_succ.pkl', 'wb'))
-            # pickle.dump(reads, open(f'{self.info_dir}/{idx}_reads.pkl', 'wb'))
-            # pickle.dump(edges, open(f'{self.info_dir}/{idx}_edges.pkl', 'wb'))
-            # pickle.dump(labels, open(f'{self.info_dir}/{idx}_labels.pkl', 'wb'))
-            # pickle.dump(read_to_node, open(f'{self.info_dir}/{idx}_read_to_node.pkl', 'wb'))
-            # if node_to_read is not None:
-            #     pickle.dump(node_to_read, open(f'{self.info_dir}/{idx}_node_to_read.pkl', 'wb'))
 
             graphia_path = os.path.join(graphia_dir, f'{idx}_graph.txt')
             graph_parser.print_pairwise(graph, graphia_path)
