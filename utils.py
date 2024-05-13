@@ -52,7 +52,6 @@ def extract_contigs(path, idx):
             contigs.append(ctg)
             n += 1
         SeqIO.write(contigs, asm_path, 'fasta')
-    subprocess.run(f'rm {path}/{idx}_asm*', shell=True)
     # subprocess.run(f'rm {path}/output.csv', shell=True)
 
 

@@ -393,9 +393,12 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
     if len(read_to_node2) != 0:
         read_to_node = read_to_node2
 
-    if paf_path and os.path.isfile(paf_path):
-        paf = {}
+    # PAF is currently not used
+    read_paf = False
+    if read_paf and paf_path:
+        # STEP 0:
         # Parse the PAF file
+        paf = {}
         with open(paf_path) as f:
             for line in f.readlines():
                 line = line.strip().split()
@@ -404,9 +407,10 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 dst, dst_len, dst_start, dst_end = line[5:9]
                 paf[(src, dst)] = (src_len, src_start, src_end, strand, dst_len, dst_start, dst_end)
 
+        # STEP 1:
+        # Iterate over all the edges in the edge list
         edge_paf_info = {}
         n2r = node_to_read
-        # Iterate over all the edges in the edge list
         for src, dst in list(edges.keys()):
             # Find the reads corresponding to the source/destination nodes (works even for collapsed unitigs)
             src_r = n2r[src]
@@ -477,10 +481,10 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                             continue
             assert added, 'Edge not assigned PAF line!'
 
-
-        edge_paf_info_new = {}
+        # STEP 2
         # Create new dictionary, edge_paf_info_new, where all the PAF overlaps will be stored in a desirable src->dst format
         # This can directly be stored as start/end overlap positions for each _node_ and makes computation of overhangs as features simpler
+        edge_paf_info_new = {}
         for (src, dst), (overlap, (so, do)) in edge_paf_info.items():
             so = 1 if so == '+' else -1  # source orientation in GFA
             do = 1 if do == '+' else -1  # destination orientation in GFA
@@ -501,25 +505,27 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
 
             if src_strand == 1 and dst_strand == 1:
                 # src=+ & dst=+ -> should result in + overlap orientation
-                assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'  # Make sure that the orientations are correct
+                # The following line was to make sure that the orientations are correct
+                # But it fails in some cases of wrong PAF lines assigned to edges (fixed in Step 3)
+                # assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'
                 overlap_new = overlap
             elif src_strand == -1 and dst_strand == 1:
                 # src=- & dst=+ -> should result in - overlap orientation
-                assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
+                # assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
                 length, start, end = overlap[:3]
                 start_new = length - end
                 end_new = length - start
                 overlap_new = (length, start_new, end_new) + overlap[3:]
             elif src_strand == 1 and dst_strand == -1:
                 # src=+ & dst=- -> should result in - overlap orientation
-                assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
+                # assert overlap[3] == '-', f'Breaking for {src} {dst}\n{overlap}'
                 length, start, end = overlap[-3:]
                 start_new = length - end
                 end_new = length - start
                 overlap_new = overlap[:-3] + (length, start_new, end_new)
             else:
                 # src=- & dst=- -> should result in + overlap orientation
-                assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'
+                # assert overlap[3] == '+', f'Breaking for {src} {dst}\n{overlap}'
                 length1, start1, end1 = overlap[:3]
                 length2, start2, end2 = overlap[-3:]
                 sign = overlap[3]
@@ -531,6 +537,7 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
 
             edge_paf_info_new[src, dst] = overlap_new, (so, do)
 
+        # STEP 3:
         # In some cases PAF lines for readA - readB overlap are not the same as for readB - readA overlap
         # This results in some edges getting assigned the prefix-suffix overlaps instead of suffix-prefix
         # This is a "fix" for that problem, though it relies on the sequence lengths and is not perfect
@@ -567,7 +574,7 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
         auxiliary['labels'] = labels
     if 'node_to_read' in locals():
         auxiliary['node_to_read'] = node_to_read
-    if 'edge_paf_info' in locals():
+    if read_paf and 'edge_paf_info' in locals():
         auxiliary['edge_paf_info'] = edge_paf_info
 
     return graph_dgl, auxiliary

@@ -10,6 +10,18 @@ import train_valid_chrs
 from config import get_config
 
 
+class InvalidSuffixError(Exception):
+    def __init__(self):
+        self.message = f'Invalid suffix of chromosomes in train_valid_chromosome.py script. Currently only "_hg002" is supported: e.g. "chr6_hg002".'
+        super().__init__(self.message)
+
+
+class SampleProfileUnspecifiedError(Exception):
+    def __init__(self):
+        self.message = f'Sample profile ID for PBSIM3 is unspecified. Provide a value for it in config.py script.'
+        super().__init__(self.message)
+
+
 def change_description_seqreq(file_path):
     new_fasta = []
     for record in SeqIO.parse(file_path, file_path[-5:]):  # 'fasta' for FASTA file, 'fastq' for FASTQ file
@@ -31,21 +43,19 @@ def change_description_seqreq(file_path):
 def change_description_pbsim(fastq_path, maf_path, chr):
     chr = int(chr[3:])
     reads = {r.id: r for r in SeqIO.parse(fastq_path, 'fastq')}
-    # print(len(reads))
-    # counter = 0
     for align in AlignIO.parse(maf_path, 'maf'):
         ref, read_m = align
-        start = ref.annotations['start']
-        end = start + ref.annotations['size']
+        # .annotations['size'] gives a correct length of the sequence
+        # len(ref.seq) can give wrong length because '-' characters can be include in the sequence (since MAF is for MSA)
+        start = ref.annotations['start']  # Lower-bound included
+        end = start + ref.annotations['size']  # Upper-bound excluded --> read == ref[start:end] --> Pythonic!
         strand = '+' if read_m.annotations['strand'] == 1 else '-'
         description = f'strand={strand} start={start} end={end} chr={chr}'
         reads[read_m.id].id += f'_chr{chr}'
         reads[read_m.id].name += f'_chr{chr}'
         reads[read_m.id].description = description
-        # counter += 1
-    # print(counter)
     fasta_path = fastq_path[:-1] + 'a'
-    SeqIO.write(list(reads.values()), fasta_path, 'fasta')
+    SeqIO.write(list(reads.values()), fasta_path, 'fasta-2line')
     os.remove(fastq_path)
     return fasta_path
 
@@ -87,10 +97,8 @@ def simulate_reads_hifi(datadir_path, chrs_path, chr_dict, assembler, pbsim3_dir
         elif chrN_flag.endswith('_hg002'):
             chrN = chrN_flag[:-6]
             chr_seq_path = os.path.join(chrs_path, f'{chrN}.fasta')
-            # depth = 60
         else:
-            print('Give valid suffix!')
-            raise Exception
+            raise InvalidSuffixError
 
         chr_raw_path = os.path.join(datadir_path, f'{chrN}/raw')
         chr_processed_path = os.path.join(datadir_path, f'{chrN}/{assembler}/processed')
@@ -114,6 +122,8 @@ def simulate_reads_hifi(datadir_path, chrs_path, chr_dict, assembler, pbsim3_dir
             chr_save_path = os.path.join(chr_raw_path, f'{idx}.fasta')
             print(f'\nStep {i}: Simulating reads {chr_save_path}')
             # Use the CHM13/HG002 profile for all the chromosomes
+            if len(sample_profile_id) == 0:
+                raise SampleProfileUnspecifiedError
             if f'sample_profile_{sample_profile_id}.fastq' not in os.listdir(pbsim3_dir):
                 assert os.path.isfile(sample_file_path), "Sample profile ID and sample file not found! Provide either a valid sample profile ID or a sample file."
                 subprocess.run(f'./src/pbsim --strategy wgs --method sample --depth {depth} --genome {chr_seq_path} ' \
@@ -134,17 +144,15 @@ def generate_graphs_hifi(datadir_path, chr_dict, assembler, threads):
             chrN = chrN_flag[:-6]
             chr_sim_path = os.path.join(datadir_path, f'{chrN}')
         else:
-            print(f'Give valid suffix')
-            raise Exception  # TODO: Implement custom exception
-
-        chr_raw_path = os.path.join(chr_sim_path, 'raw')
+            raise InvalidSuffixError
         chr_prc_path = os.path.join(chr_sim_path, f'{assembler}/processed')
-        n_raw = len(os.listdir(chr_raw_path))
         n_prc = len(os.listdir(chr_prc_path))
-        n_diff = max(0, n_raw - n_prc)
+        if n_need < n_prc:
+            continue
+        n_diff = max(0, n_need - n_prc)
         if n_diff > 0:
             print(f'SETUP - generate: Generate {n_diff} graphs for {chrN}')
-        graph_dataset.AssemblyGraphDataset_HiFi(chr_sim_path, assembler=assembler, threads=threads, generate=True)
+            graph_dataset.AssemblyGraphDataset_HiFi(chr_sim_path, assembler=assembler, threads=threads, generate=True, n_need=n_need)
 
 
 if __name__ == '__main__':
@@ -163,7 +171,6 @@ if __name__ == '__main__':
     config = get_config()
     pbsim3_dir = config['pbsim3_dir']
     sample_profile_id = config['sample_profile_ID']
-    assert len(sample_profile_id) > 0, "You need to specify sample_profile_id!"
     sample_file = config['sample_file']
     seq_depth = config['sequencing_depth']
 

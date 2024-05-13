@@ -12,12 +12,12 @@ from utils import preprocess_graph, add_positional_encoding, extract_contigs
 
 
 class AssemblyGraphDataset(DGLDataset):
-    def __init__(self, root, assembler, threads=32, generate=False):
+    def __init__(self, root, assembler, threads=32, generate=False, n_need=0):
         self.root = os.path.abspath(root)
         self.assembler = assembler
         self.threads = threads
+        self.n_need = n_need
         self.assembly_dir = os.path.join(self.root, self.assembler)
-        # print(self.assembly_dir)
 
         if 'raw' not in os.listdir(self.root):
             subprocess.run(f"mkdir 'raw'", shell=True, cwd=self.root)
@@ -57,9 +57,10 @@ class AssemblyGraphDataset(DGLDataset):
 
     def has_cache(self):
         """Check if the raw data is already processed and stored."""
-        raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
+        # raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
         prc_files = {int(re.findall(r'(\d+).dgl', prc)[0]) for prc in os.listdir(self.save_dir)}
-        return len(raw_files - prc_files) == 0  # set difference
+        needed_files = {i for i in range(self.n_need)}
+        return len(needed_files - prc_files) == 0  # set difference
 
     def __len__(self):
         return len(os.listdir(self.save_dir))
@@ -74,22 +75,23 @@ class AssemblyGraphDataset(DGLDataset):
 
 class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
-    def __init__(self, root, assembler='hifiasm', threads=32, generate=False):
-        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate)
+    def __init__(self, root, assembler='hifiasm', threads=1, generate=False, n_need=0):
+        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate, n_need=n_need)
 
     def process(self):
         """Process the raw data and save it on the disk."""
         assembler = 'hifiasm'
-
+        print(f'hifiasm process')
         assert assembler in ('raven', 'hifiasm'), 'Choose either "raven" or "hifiasm" assembler'
 
         graphia_dir = os.path.join(self.assembly_dir, 'graphia')
         if not os.path.isdir(graphia_dir):
             os.mkdir(graphia_dir)
 
-        raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
+        # raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
         prc_files = {int(re.findall(r'(\d+).dgl', prc)[0]) for prc in os.listdir(self.save_dir)}
-        diff = raw_files - prc_files
+        needed_files = {i for i in range(self.n_need)}
+        diff = sorted(needed_files - prc_files)
 
         for cnt, idx in enumerate(diff):
             fastq = f'{idx}.fasta'
@@ -103,19 +105,27 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
             # Raven
             if assembler == 'raven':
                 subprocess.run(f'{self.raven_path} --disable-checkpoints --identity 0.99 -k29 -w9 -t{self.threads} -p0 {reads_path} > {idx}_assembly.fasta', shell=True, cwd=self.output_dir)
-                subprocess.run(f'mv graph_1.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
-                gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
+                subprocess.run(f'mv graph_1.gfa {idx}_raw_graph.gfa', shell=True, cwd=self.output_dir)
+                gfa_path = os.path.join(self.output_dir, f'{idx}_raw_graph.gfa')
 
             # Hifiasm
             elif assembler == 'hifiasm':
-                subprocess.run(f'{self.hifiasm_path} --prt-raw -o {idx}_asm -t{self.threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
-                subprocess.run(f'mv {idx}_asm.bp.raw.r_utg.gfa {idx}_graph_1.gfa', shell=True, cwd=self.output_dir)
-                gfa_path = os.path.join(self.output_dir, f'{idx}_graph_1.gfa')
+                write_paf = False
+                if write_paf:
+                    subprocess.run(f'{self.hifiasm_path} --prt-raw --write-paf -o {idx}_asm -t{self.threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
+                    subprocess.run(f'mv {idx}_asm.ovlp.paf {idx}_ovlp.paf', shell=True, cwd=self.output_dir)
+                    paf_path = os.path.join(self.output_dir, f'{idx}_ovlp.paf')
+                else:
+                    subprocess.run(f'{self.hifiasm_path} --prt-raw -o {idx}_asm -t{self.threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
+                    paf_path = None
+                subprocess.run(f'mv {idx}_asm.bp.raw.r_utg.gfa {idx}_raw_graph.gfa', shell=True, cwd=self.output_dir)
+                gfa_path = os.path.join(self.output_dir, f'{idx}_raw_graph.gfa')
                 extract_contigs(self.output_dir, idx)
+                subprocess.run(f'rm {self.output_dir}/{idx}_asm*', shell=True)
 
             print(f'\nAssembler generated the graph! Processing...')
             processed_path = os.path.join(self.save_dir, f'{idx}.dgl')
-            graph, auxiliary = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True)
+            graph, auxiliary = graph_parser.only_from_gfa(gfa_path, reads_path=reads_path, training=True, get_similarities=True, paf_path=paf_path)
             print(f'Parsed assembler output! Saving files...')
 
             dgl.save_graphs(processed_path, graph)
@@ -129,8 +139,8 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
 class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
 
-    def __init__(self, root, assembler='raven', threads=32, generate=False):
-        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate)
+    def __init__(self, root, assembler='raven', threads=1, generate=False, n_need=0):
+        super().__init__(root=root, assembler=assembler, threads=threads, generate=generate, n_need=n_need)
 
     def process(self):
         """Process the raw data and save it on the disk."""
@@ -140,9 +150,10 @@ class AssemblyGraphDataset_ONT(AssemblyGraphDataset):
         if not os.path.isdir(graphia_dir):
             os.mkdir(graphia_dir)
 
-        raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
+        # raw_files = {int(re.findall(r'(\d+).fast*', raw)[0]) for raw in os.listdir(self.raw_dir)}
         prc_files = {int(re.findall(r'(\d+).dgl', prc)[0]) for prc in os.listdir(self.save_dir)}
-        diff = raw_files - prc_files
+        needed_files = {i for i in range(self.n_need)}
+        diff = sorted(needed_files - prc_files)
 
         for cnt, idx in enumerate(diff):
             fastq = f'{idx}.fasta'
