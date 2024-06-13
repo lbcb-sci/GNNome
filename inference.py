@@ -359,7 +359,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     hidden_features = hyperparameters['dim_latent']
     nb_pos_enc = hyperparameters['nb_pos_enc']
 
-    batch_norm = hyperparameters['batch_norm']
+    normalization = hyperparameters['normalization']
     node_features = hyperparameters['node_features']
     edge_features = hyperparameters['edge_features']
     hidden_edge_features = hyperparameters['hidden_edge_features']
@@ -424,7 +424,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                     g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
                 else:
                     print(f'Loading model parameters from: {model_path}')
-                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
+                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
                     model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
                     model.eval()
                     model.to(device)

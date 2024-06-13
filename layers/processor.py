@@ -1,4 +1,3 @@
-import dgl
 from dgl.nn.pytorch.conv import GraphConv, GATConv, SAGEConv
 import torch
 import torch.nn as nn
@@ -8,10 +7,10 @@ import layers
 
 
 class SymGatedGCN_processor(nn.Module):
-    def __init__(self, num_layers, hidden_features, batch_norm, dropout=None):
+    def __init__(self, num_layers, hidden_features, normalization, dropout=None):
         super().__init__()
         self.convs = nn.ModuleList([
-            layers.SymGatedGCN(hidden_features, hidden_features, batch_norm, dropout) for _ in range(num_layers)
+            layers.SymGatedGCN(hidden_features, hidden_features, normalization, dropout) for _ in range(num_layers)
         ])
 
     def forward(self, graph, h, e):
@@ -21,10 +20,10 @@ class SymGatedGCN_processor(nn.Module):
 
 
 class GatedGCN_processor(nn.Module):
-    def __init__(self, num_layers, hidden_features, batch_norm, dropout=None):
+    def __init__(self, num_layers, hidden_features, normalization, dropout=None):
         super().__init__()
         self.convs = nn.ModuleList([
-            layers.GatedGCN(hidden_features, hidden_features, batch_norm, dropout) for _ in range(num_layers)
+            layers.GatedGCN(hidden_features, hidden_features, normalization, dropout) for _ in range(num_layers)
         ])
 
     def forward(self, graph, h, e):

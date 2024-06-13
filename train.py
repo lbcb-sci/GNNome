@@ -77,7 +77,7 @@ def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
     return loss
 
 
-def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None, gpu=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
@@ -88,7 +88,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     patience = hyperparameters['patience']
     lr = hyperparameters['lr']
     device = hyperparameters['device']
-    batch_norm = hyperparameters['batch_norm']
+    normalization = hyperparameters['normalization']
     node_features = hyperparameters['node_features']
     edge_features = hyperparameters['edge_features']
     hidden_edge_features = hyperparameters['hidden_edge_features']
@@ -114,12 +114,19 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     print(f'\nSaving checkpoints: {checkpoints_path}')
     print(f'Saving models: {models_path}\n')
     
-    print(f'USING SEED: {seed}')
-
+    if gpu:
+        # GPU as an option to the train.py script
+        # Otherwise, take the device from hyperparameters.py
+        device = f'cuda:{gpu}'
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
-    utils.set_seed(seed)
+    else:
+        device = 'cpu'
+    print(f'Using device: {device}')
 
+    utils.set_seed(seed)
+    print(f'USING SEED: {seed}')
+    
     time_start = datetime.now()
     timestamp = time_start.strftime('%Y-%b-%d-%H-%M-%S')
     
@@ -136,7 +143,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
     pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for idx, g in ds_train]) / len(ds_train)
 
-    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
+    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
     model.to(device)
     if not os.path.exists(models_path):
         print(models_path)
@@ -150,8 +157,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'
     print(f'CHECKPOINT PATH: {ckpt_path}')
 
-    print(f'\nNumber of network parameters: {view_model_param(model)}\n')
-    print(f'Normalization type : Batch Normalization\n') if batch_norm else print(f'Normalization type : Layer Normalization\n')
+    print(f'\nNumber of network parameters: {view_model_param(model)}')
+    print(f'Normalization type : {normalization}\n')
 
     pos_weight = torch.tensor([1 / pos_to_neg_ratio], device=device)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -818,8 +825,9 @@ if __name__ == '__main__':
     parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
+    parser.add_argument('--gpu', type=int, default=None, help='Index of a GPU to train on (unspecified = cpu)')
     # parser.add_argument('--savedir', type=str, default=None, help='Directory to save the model and the checkpoints')
     args = parser.parse_args()
 
     train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, \
-          dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune, ft_model=args.ft_model)
+          dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune, ft_model=args.ft_model, gpu=args.gpu)
