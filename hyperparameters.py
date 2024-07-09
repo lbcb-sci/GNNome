@@ -2,7 +2,7 @@ import math
 import torch
 
 def get_hyperparameters():
-    hyperparameters = {
+    return {
         
         'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
         'seed': 1,

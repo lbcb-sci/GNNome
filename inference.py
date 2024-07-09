@@ -127,7 +127,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
     l = lambda src, dst: graph.ndata['read_length'][dst]
     heuristic_function = hyperparameters['heuristic_function']
     g = lambda src, dst: heuristic_function(p(src, dst), l(src, dst))
-    heuristic_values = [g(src, dst) for (src, dst) in edges]
+    heuristic_values = torch.tensor([g(src, dst) for (src, dst) in edges])
 
     print(f'Starting to decode with greedy...')
     print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
@@ -449,7 +449,7 @@ def parse_args_based_on_strategy(args):
     parameters = {'strategy': strategy}
     exceptions = []
     if strategy == 'greedy':
-        return
+        return parameters
     elif strategy == 'depth_d':
         try:
             depth = int(args.depth)
