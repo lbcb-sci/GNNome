@@ -1,7 +1,8 @@
+import math
 import torch
 
 def get_hyperparameters():
-    return {
+    hyperparameters = {
         
         'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
         'seed': 1,
@@ -52,5 +53,7 @@ def get_hyperparameters():
         'num_threads': 32,
         'B': 1,
         'len_threshold': 10,
+        'heuristic_function': lambda prob, length: prob * math.log(length),
+        'heuristic_reduce_function': lambda curr, new: (curr ** 2 + new ** 2) ** (1 / 2)
     }
 
