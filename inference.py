@@ -480,7 +480,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
         try:
-            coeffs = list(map(float, args.func.split()))
+            coeffs = list(map(float, args.coeffs.split('-')))
             coeffs.reverse()
         except Exception:
             raise Exception("Coefficients must be a stream of floats")
@@ -562,7 +562,7 @@ if __name__ == '__main__':
     parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
     parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')
     parser.add_argument('--chance', type=str, default=0.125, help='Probability of selecting random edge')
-    parser.add_argument('--coeffs', type=str, default='1 0 0 0 0', help='Coefficients of polynomial, starting from highest power')
+    parser.add_argument('--coeffs', type=str, default='1 0 0 0 0', help='Coefficients of polynomial, starting from highest power, separated by a dash')
     parser.add_argument('--deg', type=str, default=4, help='Degree of polynomial')
     parser.add_argument('--dp', type=str, default=1, help='Number of decimal places in which coefficients are rounded off to')
     parser.add_argument('--seed', type=str, default=7, help='Seed that generates polynomial coefficients')

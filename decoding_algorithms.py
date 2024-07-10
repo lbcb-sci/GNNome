@@ -134,7 +134,7 @@ def random_with_weights_search(start, heur_vals, neighbors, edges, visited_old, 
     visited = set()
     path = []
     path_heur_val = torch.tensor([init_heur_val])
-    f = parameters['heuristic_values_to_probability']
+    f = parameters['heuristic_value_to_probability']
     while True:
         path.append(curr)
         visited.add(curr)
