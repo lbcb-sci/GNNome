@@ -38,43 +38,45 @@ def depth_d_search(start, heuristic_values, neighbors, edges, visited_old, graph
     path.append(current)
     visited.add(current)
     visited.add(current ^ 1)
+
     while True:
-        candidate_paths = []
+        best_d_path_with_heuristic = None
         stack = []
-        stack.append((current, []))
+        stack.append((0, [current]))
 
         while stack:
             item = stack.pop()
-            node = item[0]
+            current_heuristic_value = item[0]
             current_path = item[1]
+            last_node_id = current_path[-1]
             masked_neighbors = None
-            if node in neighbors:
-                masked_neighbors = [n for n in neighbors[node] if not (n in visited_old or n in visited)]
-            if path and not masked_neighbors:
-                candidate_paths.append(current_path)
+            if last_node_id in neighbors:
+                masked_neighbors = [n for n in neighbors[last_node_id] if not (n in visited_old or n in visited)]
+            if len(current_path) > 1 and not masked_neighbors:
+                if not best_d_path_with_heuristic or current_heuristic_value > best_d_path_with_heuristic[0]:
+                    best_d_path_with_heuristic = (current_heuristic_value, current_path)
             for nbr in masked_neighbors:
                 new_path = current_path.copy()
-                new_path.append(edges[node, nbr])
+                new_path.append(nbr)
+                new_heuristic_value = heuristic_reduce_function(current_heuristic_value, edges[last_node_id, nbr])
                 if len(new_path) >= parameters['depth']:
-                    candidate_paths.append(new_path)
+                    if not best_d_path_with_heuristic or current_heuristic_value > best_d_path_with_heuristic[0]:
+                        best_d_path_with_heuristic = (current_heuristic_value, current_path)
                 else:
-                    stack.append((nbr, new_path))
+                    stack.append((new_heuristic_value, new_path))
 
-        if not candidate_paths:
+        if not best_d_path_with_heuristic:
             break
-        candidate_path_heuristic_values = torch.stack([torch.cat((heuristic_values[candidate_path], torch.zeros(parameters['depth'] - len(candidate_path)))) for candidate_path in candidate_paths])
-        candidate_path_heuristic_values = torch.sum(candidate_path_heuristic_values, 1)
-        heuristic_value, index = torch.topk(candidate_path_heuristic_values, k=1, dim=0)
-        path_heuristic_value = heuristic_reduce_function(path_heuristic_value, heuristic_value)
 
-        best_path = candidate_paths[index]
-        last_edge_id = best_path[-1]
-        current = graph.find_edges(last_edge_id)[1][0].item()
-        for edge_id in best_path:
-            dst_node = graph.find_edges(edge_id)[1][0].item()
-            path.append(dst_node)
-            visited.add(dst_node)
-            visited.add(dst_node ^ 1)
+        heuristic_value = best_d_path_with_heuristic[0]
+        best_d_path = best_d_path_with_heuristic[1]
+        path_heuristic_value = heuristic_reduce_function(path_heuristic_value, heuristic_value)
+        # exclude current node to prevent double counting
+        for i in range(1, len(best_d_path)):
+            path.append(best_d_path[i])
+            visited.add(best_d_path[i])
+            visited.add(best_d_path[i] ^ 1)
+
     return path, visited, path_heuristic_value
 
 
