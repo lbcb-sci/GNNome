@@ -480,7 +480,8 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
         try:
-            coeffs = list(map(float, args.func.split())).reverse()
+            coeffs = list(map(float, args.func.split()))
+            coeffs.reverse()
         except Exception:
             raise Exception("Coefficients must be a stream of floats")
         def func(x, coeffs):
