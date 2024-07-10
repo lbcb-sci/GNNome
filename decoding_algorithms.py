@@ -31,55 +31,52 @@ def greedy_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     return path, visited, path_heur_val
 
 
-def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
-    curr = start
+def depth_d_search(start, heur_vals, neighbors, edges, visited_old, graph, parameters):
+    current = start
     visited = set()
-    path = []
-    path_heur_val = torch.tensor([init_heur_val])
-    path.append(curr)
-    visited.add(curr)
-    visited.add(curr ^ 1)
-
+    walk = []
+    sumLogProb = torch.tensor([0.0])
+    walk.append(current)
+    visited.add(current)
+    visited.add(current ^ 1)
     while True:
-        best_d_path_with_heur = None
+        paths = []
         stack = []
-        stack.append((init_heur_val, [curr]))
+        stack.append((current, []))
 
         while stack:
             item = stack.pop()
-            curr_heur_val = item[0]
-            curr_path = item[1]
-            last_node_id = curr_path[-1]
+            node = item[0]
+            path = item[1]
             masked_neighbors = None
-            if last_node_id in neighbors:
-                masked_neighbors = [n for n in neighbors[last_node_id] if not (n in visited_old or n in visited)]
-            if len(curr_path) > 1 and not masked_neighbors:
-                if not best_d_path_with_heur or curr_heur_val > best_d_path_with_heur[0]:
-                    best_d_path_with_heur = (curr_heur_val, curr_path)
+            if node in neighbors:
+                masked_neighbors = [n for n in neighbors[node] if not (n in visited_old or n in visited)]
+            if path and not masked_neighbors:
+                paths.append(path)
             for nbr in masked_neighbors:
-                new_path = curr_path.copy()
-                new_path.append(nbr)
-                new_heur_val = heur_reduce_func(curr_heur_val, heur_vals[edges[last_node_id, nbr]])
-                if len(new_path) > parameters['depth']:
-                    if not best_d_path_with_heur or new_heur_val > best_d_path_with_heur[0]:
-                        best_d_path_with_heur = (new_heur_val, new_path)
+                new_path = path.copy()
+                new_path.append(edges[node, nbr])
+                if len(new_path) >= parameters['depth']:
+                    paths.append(new_path)
                 else:
-                    stack.append((new_heur_val, new_path))
+                    stack.append((nbr, new_path))
 
-        if not best_d_path_with_heur:
+        if not paths:
             break
+        path_p = torch.stack([torch.cat((heur_vals[path], torch.zeros(parameters['depth'] - len(path)))) for path in paths])
+        path_p = torch.sum(path_p, 1)
+        logProb, index = torch.topk(path_p, k=1, dim=0)
+        sumLogProb += logProb
 
-        heur_val = best_d_path_with_heur[0]
-        best_d_path = best_d_path_with_heur[1]
-        path_heur_val = heur_reduce_func(path_heur_val, heur_val)
-        # exclude curr node to prevent double counting
-        for i in range(1, len(best_d_path)):
-            path.append(best_d_path[i])
-            visited.add(best_d_path[i])
-            visited.add(best_d_path[i] ^ 1)
-        curr = path[-1]
-
-    return path, visited, path_heur_val
+        best_path = paths[index]
+        last_edge_id = best_path[-1]
+        current = graph.find_edges(last_edge_id)[1][0].item()
+        for edge_id in best_path:
+            dst_node = graph.find_edges(edge_id)[1][0].item()
+            walk.append(dst_node)
+            visited.add(dst_node)
+            visited.add(dst_node ^ 1)
+    return walk, visited, sumLogProb
 
 
 def top_k_search(start, heur_vals, neighbors, edges, visited_old, parameters):
