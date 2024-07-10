@@ -77,6 +77,7 @@ def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
             path.append(best_d_path[i])
             visited.add(best_d_path[i])
             visited.add(best_d_path[i] ^ 1)
+        curr = path[-1]
 
     return path, visited, path_heur_val
 
