@@ -8,13 +8,14 @@ from hyperparameters import get_hyperparameters
 
 hyperparameters = get_hyperparameters()
 heuristic_reduce_function = hyperparameters['heuristic_reduce_function']
+initial_heuristic_value = hyperparameters['initial_heuristic_value']
 
 
 def greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters):
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     while True:
         path.append(current)
         visited.add(current)
@@ -34,7 +35,7 @@ def depth_d_search(start, heuristic_values, neighbors, edges, visited_old, graph
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     path.append(current)
     visited.add(current)
     visited.add(current ^ 1)
@@ -42,7 +43,7 @@ def depth_d_search(start, heuristic_values, neighbors, edges, visited_old, graph
     while True:
         best_d_path_with_heuristic = None
         stack = []
-        stack.append((0, [current]))
+        stack.append((initial_heuristic_value, [current]))
 
         while stack:
             item = stack.pop()
@@ -84,7 +85,7 @@ def top_k_search(start, heuristic_values, neighbors, edges, visited_old, paramet
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     while True:
         path.append(current)
         visited.add(current)
@@ -110,7 +111,7 @@ def semi_random_search(start, heuristic_values, neighbors, edges, visited_old, p
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     while True:
         path.append(current)
         visited.add(current)
@@ -135,7 +136,7 @@ def random_with_weights_search(start, heuristic_values, neighbors, edges, visite
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     f = parameters['heuristic_value_to_probability']
     while True:
         path.append(current)
@@ -170,7 +171,7 @@ def random_search(start, heuristic_values, neighbors, edges, visited_old, parame
     current = start
     visited = set()
     path = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     coeffs = []
     utils.set_seed(parameters['seed'])
     for i in range(parameters['polynomial_degree'] + 1):
@@ -213,9 +214,9 @@ def random_search(start, heuristic_values, neighbors, edges, visited_old, parame
 def beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters):
     current = [start]
     visited = set()
-    current_paths = [(0, [start], {start})]
+    current_paths = [(initial_heuristic_value, [start], {start})]
     candidate_paths = []
-    path_heuristic_value = torch.tensor([0.0])
+    path_heuristic_value = torch.tensor([initial_heuristic_value])
     while True:
         current_neighbors = [[n for n in neighbors[current_path[1][-1]] if not (n in visited_old or n in current_path[2])] for current_path in current_paths]
         flattened_neighbors = [n for current_path in current_paths for n in neighbors[current_path[1][-1]] if not (n in visited_old or n in current_path[2])]
