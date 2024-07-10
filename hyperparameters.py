@@ -55,6 +55,6 @@ def get_hyperparameters():
         'len_threshold': 10,
         'heuristic_function': lambda prob, length: prob * math.log(length),
         'heuristic_reduce_function': lambda curr, new: (curr ** 2 + new ** 2) ** (1 / 2),
-        'initial_heuristic_value': 0,
+        'initial_heuristic_value': 0.0,
     }
 

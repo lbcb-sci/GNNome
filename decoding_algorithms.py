@@ -60,9 +60,9 @@ def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
                 new_path = curr_path.copy()
                 new_path.append(nbr)
                 new_heur_val = heur_reduce_func(curr_heur_val, heur_vals[edges[last_node_id, nbr]])
-                if len(new_path) >= parameters['depth']:
-                    if not best_d_path_with_heur or curr_heur_val > best_d_path_with_heur[0]:
-                        best_d_path_with_heur = (curr_heur_val, curr_path)
+                if len(new_path) > parameters['depth']:
+                    if not best_d_path_with_heur or new_heur_val > best_d_path_with_heur[0]:
+                        best_d_path_with_heur = (new_heur_val, new_path)
                 else:
                     stack.append((new_heur_val, new_path))
 

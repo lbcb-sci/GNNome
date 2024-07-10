@@ -78,7 +78,7 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
     if strategy == 'greedy':
         return greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'depth_d':
-        return depth_d_search(start, heuristic_values, neighbors, edges, visited_old, graph, parameters)
+        return depth_d_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'top_k':
         return top_k_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'semi_random':
@@ -88,7 +88,7 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
     if strategy == 'random_search':
         return random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'beam':
-        return beam_search(start, heuristic_values, neighbors, edges, visited_old, graph, parameters)
+        return beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     raise ValueError('Unknown strategy. Aborting process...')
 
 
