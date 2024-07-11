@@ -31,7 +31,7 @@ def greedy_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     return path, visited, path_heur_val
 
 
-def depth_d_search(start, heur_vals, neighbors, edges, visited_old, graph, parameters):
+def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     curr = start
     visited = set()
     path = []
