@@ -175,7 +175,7 @@ def random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
         coeff = random.uniform(0, 1)
         coeff = round(coeff, parameters['precision_in_decimal_places'])
         coeffs.append(coeff)
-    # coeffs[0] = 0 # to remove constant; explained later
+    coeffs[0] = 0 # to remove constant; explained later
     def func(x, coeffs):
         result = 0
         for i in range(len(coeffs)):

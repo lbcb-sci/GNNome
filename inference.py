@@ -309,7 +309,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
 def inference(data_path, model_path, assembler, savedir, parameters, device='cpu', dropout=None):
     """Using a pretrained model, get walks and contigs on new data."""
     hyperparameters = get_hyperparameters()
-    seed = hyperparameters['seed']
+    seed = parameters['seed'] if 'seed' in parameters else hyperparameters['seed']
     num_gnn_layers = hyperparameters['num_gnn_layers']
     hidden_features = hyperparameters['dim_latent']
     nb_pos_enc = hyperparameters['nb_pos_enc']
@@ -445,6 +445,14 @@ def inference(data_path, model_path, assembler, savedir, parameters, device='cpu
 
 
 def parse_args_based_on_strategy(args):
+    def parse_seed(args):
+        try:
+            seed = int(args.seed)
+        except ValueError:
+            print("Defaulting to seed in hyperparameters...")
+        else:
+            parameters['seed'] = seed
+
     strategy = args.strat
     parameters = {'strategy': strategy}
     exceptions = []
@@ -463,10 +471,11 @@ def parse_args_based_on_strategy(args):
         try:
             top_k = int(args.k)
         except ValueError:
-            raise Exception("k must be a positive integer")
+            raise Exception("Top k must be a positive integer")
         if top_k <= 0:
-            raise Exception("k must be a positive integer")
+            raise Exception("Top k must be a positive integer")
         parameters['top_k'] = top_k
+        parse_seed(args)
 
     elif strategy == 'semi_random':
         try:
@@ -476,6 +485,7 @@ def parse_args_based_on_strategy(args):
         if not 0 <= random_chance <= 1:
             raise Exception("Chance must be between 0 and 1 (inclusive)")
         parameters['random_chance'] = random_chance
+        parse_seed(args)
 
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
@@ -483,7 +493,7 @@ def parse_args_based_on_strategy(args):
             coeffs = list(map(float, args.coeffs.split('-')))
             coeffs.reverse()
         except Exception:
-            raise Exception("Coefficients must be a stream of floats")
+            raise Exception("Coefficients must be a stream of numbers, separated by dashes")
         def func(x, coeffs):
             result = 0
             for i in range(len(coeffs)):
@@ -491,6 +501,7 @@ def parse_args_based_on_strategy(args):
             return result
         f = lambda x: func(x, coeffs)
         parameters['heuristic_value_to_probability'] = f
+        parse_seed(args)
 
     elif strategy == 'random_search':
         try:
@@ -511,12 +522,7 @@ def parse_args_based_on_strategy(args):
                 exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
             else:
                 parameters['precision_in_decimal_places'] = precision_in_decimal_places
-        try:
-            seed = int(args.seed)
-        except ValueError:
-            exceptions.append(Exception("Seed must be an integer"))
-        else:
-            parameters['seed'] = seed
+        parse_seed(args)
 
     elif strategy == 'beam':
         try:
@@ -558,14 +564,14 @@ if __name__ == '__main__':
     parser.add_argument('--asm', type=str, help='Assembler used')
     parser.add_argument('--out', type=str, help='Output directory')
     parser.add_argument('--model', type=str, default=None, help='Path to the model')
+    parser.add_argument('--seed', type=str, default=None, help='Seed used for random processes')
     parser.add_argument('--strat', type=str, default='greedy', help='Strategy used in decoding')
     parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
     parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')
     parser.add_argument('--chance', type=str, default=0.125, help='Probability of selecting random edge')
-    parser.add_argument('--coeffs', type=str, default='1 0 0 0 0', help='Coefficients of polynomial, starting from highest power, separated by a dash')
+    parser.add_argument('--coeffs', type=str, default='1-0-0-0-0', help='Coefficients of polynomial, starting from highest power, separated by dashes')
     parser.add_argument('--deg', type=str, default=4, help='Degree of polynomial')
     parser.add_argument('--dp', type=str, default=1, help='Number of decimal places in which coefficients are rounded off to')
-    parser.add_argument('--seed', type=str, default=7, help='Seed that generates polynomial coefficients')
     parser.add_argument('--b', type=str, default=2, help='Top b edges to select')
     parser.add_argument('--w', type=str, default=2, help='Top w walks to keep')
     parser.add_argument('--opt', type=str, default=2, help='Option to keep walks by')
