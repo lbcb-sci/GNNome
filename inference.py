@@ -94,15 +94,15 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
 
 def greedy_backwards_rc(start, heuristic_values, predecessors, neighbors, edges, visited_old, graph, parameters):
     """Greedy walk backwards."""
-    walk, visited, sum_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, neighbors, predecessors, edges, visited_old, graph, parameters)
+    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, neighbors, predecessors, edges, visited_old, graph, parameters)
     walk = list(reversed([edge_id ^ 1 for edge_id in walk]))
-    return walk, visited, sum_heuristic_value
+    return walk, visited, path_heuristic_value
     
 
 def run_greedy_both_ways(src, dst, heuristic_values, succs, preds, edges, visited, graph, parameters):
-    walk_f, visited_f, sum_heuristic_value_f = greedy_forwards(dst, heuristic_values, succs, preds, edges, visited, graph, parameters)
-    walk_b, visited_b, sum_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, preds, succs, edges, visited | visited_f, graph, parameters)
-    return walk_f, walk_b, visited_f, visited_b, sum_heuristic_value_f, sum_heuristic_value_b
+    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, succs, preds, edges, visited, graph, parameters)
+    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, preds, succs, edges, visited | visited_f, graph, parameters)
+    return walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b
 
 
 def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
@@ -163,7 +163,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
         all_visited_iter = []
 
         all_contig_lens = []
-        all_sum_heuristic_value = []
+        all_path_heuristic_value = []
         all_mean_heuristic_value = []
         all_mean_heuristic_value_scaled = []
 
@@ -203,20 +203,20 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
 
             indx = 0
             for k, (f, e) in results.items():  # key, future -> Why did I not name this properly?
-                walk_f, walk_b, visited_f, visited_b, sum_heuristic_value_f, sum_heuristic_value_b = f.result()
+                walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b = f.result()
                 if DEBUG:
                     print(f'Finished with candidate {e}: {k}\t' \
                         f'Time needed: {utils.timedelta_to_str(datetime.now() - start_times[e])}')         
                 walk_it = walk_b + walk_f
                 visited_iter = visited_f | visited_b
-                sum_heuristic_value_it = sum_heuristic_value_f.item() + sum_heuristic_value_b.item()
+                path_heuristic_value_it = path_heuristic_value_f.item() + path_heuristic_value_b.item()
                 len_walk_it = len(walk_it)
                 len_contig_it = get_contig_length(walk_it, graph).item()
                 if k[0] == k[1]:
                     len_walk_it = 1
                 
                 if len_walk_it > 2:
-                    mean_heuristic_value_it = sum_heuristic_value_it / (len_walk_it - 2)  # len(walk_f) - 1 + len(walk_b) - 1  <-> starting edge is neglected
+                    mean_heuristic_value_it = path_heuristic_value_it / (len_walk_it - 2)  # len(walk_f) - 1 + len(walk_b) - 1  <-> starting edge is neglected
                     try:
                         mean_heuristic_value_scaled_it = mean_heuristic_value_it / math.sqrt(len_contig_it)
                     except ValueError:
@@ -233,18 +233,18 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
                         mean_heuristic_value_scaled_it = 0
                 else:  # len_walk_it == 1 <-> SELF-LOOP!
                     len_contig_it = 0
-                    sum_heuristic_value_it = 0.0
+                    path_heuristic_value_it = 0.0
                     mean_heuristic_value_it = 0.0
                     mean_heuristic_value_scaled_it = 0.0
                     print(f'SELF-LOOP!')
                 print(f'{indx:<3}: src={k[0]:<8} dst={k[1]:<8} len_walk={len_walk_it:<8} len_contig={len_contig_it:<12} ' \
-                      f'sum_heuristic_value={sum_heuristic_value_it:<12.3f} mean_heuristic_value={mean_heuristic_value_it:<12.4} mean_heuristic_value_scaled={mean_heuristic_value_scaled_it:<12.4}')
+                      f'path_heuristic_value={path_heuristic_value_it:<12.3f} mean_heuristic_value={mean_heuristic_value_it:<12.4} mean_heuristic_value_scaled={mean_heuristic_value_scaled_it:<12.4}')
 
                 indx += 1
                 all_walks.append(walk_it)
                 all_visited_iter.append(visited_iter)
                 all_contig_lens.append(len_contig_it)
-                all_sum_heuristic_value.append(sum_heuristic_value_it)
+                all_path_heuristic_value.append(path_heuristic_value_it)
                 all_mean_heuristic_value.append(mean_heuristic_value_it)
                 all_mean_heuristic_value_scaled.append(mean_heuristic_value_scaled_it)
 
@@ -267,7 +267,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
         best_visited = best_visited | trans
 
         best_contig_len = all_contig_lens[idxx]
-        best_sum_heuristic_value = all_sum_heuristic_value[idxx]
+        best_path_heuristic_value = all_path_heuristic_value[idxx]
         best_mean_heuristic_value = all_mean_heuristic_value[idxx]
         best_mean_heuristic_value_scaled = all_mean_heuristic_value_scaled[idxx]
 
@@ -276,7 +276,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
 
         print(f'\nChosen walk with index: {idxx}')
         print(f'len_walk={len(best_walk):<8} len_contig={best_contig_len:<12} ' \
-              f'sum_heuristic_value={best_sum_heuristic_value:<12.3f} mean_heuristic_value={best_mean_heuristic_value:<12.4} mean_heuristic_value_scaled={best_mean_heuristic_value_scaled:<12.4}\n')
+              f'path_heuristic_value={best_path_heuristic_value:<12.3f} mean_heuristic_value={best_mean_heuristic_value:<12.4} mean_heuristic_value_scaled={best_mean_heuristic_value_scaled:<12.4}\n')
         
         if best_contig_len < 70000:
             break
