@@ -448,7 +448,7 @@ def parse_args_based_on_strategy(args):
     def parse_seed(args):
         try:
             seed = int(args.seed)
-        except ValueError:
+        except (TypeError, ValueError):
             print("Defaulting to seed in hyperparameters...")
         else:
             parameters['seed'] = seed
@@ -461,7 +461,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'depth_d':
         try:
             depth = int(args.depth)
-        except ValueError:
+        except (TypeError, ValueError):
             raise Exception("Depth must be a positive integer")
         if depth <= 0:
             raise Exception("Depth must be a positive integer")
@@ -470,7 +470,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'top_k':
         try:
             top_k = int(args.k)
-        except ValueError:
+        except (TypeError, ValueError):
             raise Exception("Top k must be a positive integer")
         if top_k <= 0:
             raise Exception("Top k must be a positive integer")
@@ -480,7 +480,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'semi_random':
         try:
             random_chance = float(args.chance)
-        except ValueError:
+        except (TypeError, ValueError):
             raise Exception("Chance must be between 0 and 1 (inclusive)")
         if not 0 <= random_chance <= 1:
             raise Exception("Chance must be between 0 and 1 (inclusive)")
@@ -490,15 +490,15 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
         try:
-            coeffs = list(map(float, args.coeffs.split('-')))
-            coeffs.reverse()
-        except Exception:
-            raise Exception("Coefficients must be a stream of numbers, separated by dashes")
+            coeffs = list(map(float, args.coeffs.split(',')))
+        except (AttributeError, TypeError, ValueError):
+            raise Exception("Coefficients must be a stream of numbers, separated by commas")
         def func(x, coeffs):
             result = 0
             for i in range(len(coeffs)):
                 result += coeffs[i] * x ** i
             return result
+        coeffs.reverse()
         f = lambda x: func(x, coeffs)
         parameters['heuristic_value_to_probability'] = f
         parse_seed(args)
@@ -506,7 +506,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'random_search':
         try:
             polynomial_degree = int(args.deg)
-        except ValueError:
+        except (TypeError, ValueError):
             exceptions.append(Exception("Degree must be a positive integer"))
         else: 
             if polynomial_degree <= 0:
@@ -515,7 +515,7 @@ def parse_args_based_on_strategy(args):
                 parameters['polynomial_degree'] = polynomial_degree
         try:
             precision_in_decimal_places = int(args.dp)
-        except ValueError:
+        except (TypeError, ValueError):
             exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
         else:
             if precision_in_decimal_places < 0:
@@ -527,7 +527,7 @@ def parse_args_based_on_strategy(args):
     elif strategy == 'beam':
         try:
             top_b = int(args.b)
-        except ValueError:
+        except (TypeError, ValueError):
             exceptions.append(Exception("Top b must be a positive integer"))
         else:
             if top_b <= 0:
@@ -536,7 +536,7 @@ def parse_args_based_on_strategy(args):
                 parameters['top_b'] = top_b
         try:
             top_w = int(args.w)
-        except ValueError:
+        except (TypeError, ValueError):
             exceptions.append(Exception("Top w must be a positive integer"))
         else:
             if top_w <= 0:
@@ -569,7 +569,7 @@ if __name__ == '__main__':
     parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
     parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')
     parser.add_argument('--chance', type=str, default=0.125, help='Probability of selecting random edge')
-    parser.add_argument('--coeffs', type=str, default='1-0-0-0-0', help='Coefficients of polynomial, starting from highest power, separated by dashes')
+    parser.add_argument('--coeffs', type=str, default='1,0,0,0,0', help='Coefficients of polynomial, starting from highest power, separated by commas')
     parser.add_argument('--deg', type=str, default=4, help='Degree of polynomial')
     parser.add_argument('--dp', type=str, default=1, help='Number of decimal places in which coefficients are rounded off to')
     parser.add_argument('--b', type=str, default=2, help='Top b edges to select')
