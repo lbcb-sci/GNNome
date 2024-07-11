@@ -445,17 +445,21 @@ def inference(data_path, model_path, assembler, savedir, parameters, device='cpu
 
 
 def parse_args_based_on_strategy(args):
-    def parse_seed(args):
-        try:
-            seed = int(args.seed)
-        except (TypeError, ValueError):
-            print("Defaulting to seed in hyperparameters...")
-        else:
-            parameters['seed'] = seed
-
     strategy = args.strat
     parameters = {'strategy': strategy}
     exceptions = []
+
+    def parse_seed():
+        try:
+            seed = int(args.seed)
+        except (TypeError, ValueError):
+            if args.seed is None:
+                print("Defaulting to seed in hyperparameters...")
+            else:
+                exceptions.append(Exception("Seed provided must be an integer"))
+        else:
+            parameters['seed'] = seed
+
     if strategy == 'greedy':
         return parameters
     elif strategy == 'depth_d':
@@ -471,37 +475,43 @@ def parse_args_based_on_strategy(args):
         try:
             top_k = int(args.k)
         except (TypeError, ValueError):
-            raise Exception("Top k must be a positive integer")
-        if top_k <= 0:
-            raise Exception("Top k must be a positive integer")
-        parameters['top_k'] = top_k
-        parse_seed(args)
+            exceptions.append(Exception("Top k must be a positive integer"))
+        else:
+            if top_k <= 0:
+                exceptions.append(Exception("Top k must be a positive integer"))
+            else:
+                parameters['top_k'] = top_k
+        parse_seed()
 
     elif strategy == 'semi_random':
         try:
             random_chance = float(args.chance)
         except (TypeError, ValueError):
-            raise Exception("Chance must be between 0 and 1 (inclusive)")
-        if not 0 <= random_chance <= 1:
-            raise Exception("Chance must be between 0 and 1 (inclusive)")
-        parameters['random_chance'] = random_chance
-        parse_seed(args)
+            exceptions.append(Exception("Chance must be between 0 and 1 (inclusive)"))
+        else:
+            if not 0 <= random_chance <= 1:
+                exceptions.append(Exception("Chance must be between 0 and 1 (inclusive)"))
+            else:
+                parameters['random_chance'] = random_chance
+        parse_seed()
 
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
         try:
             coeffs = list(map(float, args.coeffs.split(',')))
         except (AttributeError, TypeError, ValueError):
-            raise Exception("Coefficients must be a stream of numbers, separated by commas")
-        def func(x, coeffs):
-            result = 0
-            for i in range(len(coeffs)):
-                result += coeffs[i] * x ** i
-            return result
-        coeffs.reverse()
-        f = lambda x: func(x, coeffs)
-        parameters['heuristic_value_to_probability'] = f
-        parse_seed(args)
+            exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
+        else:
+            def func(x, coeffs):
+                result = 0
+                for i in range(len(coeffs)):
+                    result += coeffs[i] * x ** i
+                return result
+            
+            coeffs.reverse()
+            f = lambda x: func(x, coeffs)
+            parameters['heuristic_value_to_probability'] = f
+        parse_seed()
 
     elif strategy == 'random_search':
         try:
@@ -522,7 +532,7 @@ def parse_args_based_on_strategy(args):
                 exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
             else:
                 parameters['precision_in_decimal_places'] = precision_in_decimal_places
-        parse_seed(args)
+        parse_seed()
 
     elif strategy == 'beam':
         try:

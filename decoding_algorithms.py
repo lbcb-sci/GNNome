@@ -170,7 +170,8 @@ def random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     path = []
     path_heur_val = torch.tensor([init_heur_val])
     coeffs = []
-    utils.set_seed(parameters['seed'])
+    seed = parameters['seed'] if 'seed' in parameters else hyperparameters['seed']
+    utils.set_seed(seed)
     for i in range(parameters['polynomial_degree'] + 1):
         coeff = random.uniform(0, 1)
         coeff = round(coeff, parameters['precision_in_decimal_places'])
