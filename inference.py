@@ -454,7 +454,7 @@ def parse_args_based_on_strategy(args):
             seed = int(args.seed)
         except (TypeError, ValueError):
             if args.seed is None:
-                print("Defaulting to seed in hyperparameters...")
+                print("Seed is not specified. Defaulting to seed in hyperparameters...")
             else:
                 exceptions.append(Exception("Seed provided must be an integer"))
         else:
@@ -502,15 +502,19 @@ def parse_args_based_on_strategy(args):
         except (AttributeError, TypeError, ValueError):
             exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
         else:
-            def func(x, coeffs):
-                result = 0
-                for i in range(len(coeffs)):
-                    result += coeffs[i] * x ** i
-                return result
-            
-            coeffs.reverse()
-            f = lambda x: func(x, coeffs)
-            parameters['heuristic_value_to_probability'] = f
+            if not any(coeffs):
+                exceptions.append(Exception("Coefficients cannot all be 0"))
+            else:
+                def func(x, coeffs):
+                    result = 0
+                    for i in range(len(coeffs)):
+                        result += coeffs[i] * x ** i
+                    return result
+                if coeffs[0] == 0:
+                    warnings.warn("Leading coefficient is 0")
+                coeffs.reverse()
+                f = lambda x: func(x, coeffs)
+                parameters['heuristic_value_to_probability'] = f
         parse_seed()
 
     elif strategy == 'random_search':
