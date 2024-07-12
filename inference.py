@@ -71,9 +71,8 @@ def sample_edges(prob_edges, nb_paths):
     return idx_edges
 
 
-def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, visited_old, graph, parameters):
+def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, visited_old, graph, strategy, parameters):
     """Greedy walk forwards."""
-    strategy = parameters['strategy']
     if strategy == 'greedy':
         return greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'depth_d':
@@ -89,20 +88,20 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
     raise ValueError('Unknown strategy. Aborting process...')
 
 
-def greedy_backwards_rc(start, heuristic_values, predecessors, neighbors, edges, visited_old, graph, parameters):
+def greedy_backwards_rc(start, heuristic_values, predecessors, neighbors, edges, visited_old, graph, strategy, parameters):
     """Greedy walk backwards."""
-    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, neighbors, predecessors, edges, visited_old, graph, parameters)
+    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, neighbors, predecessors, edges, visited_old, graph, strategy, parameters)
     walk = list(reversed([edge_id ^ 1 for edge_id in walk]))
     return walk, visited, path_heuristic_value
     
 
-def run_greedy_both_ways(src, dst, heuristic_values, succs, preds, edges, visited, graph, parameters):
-    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, succs, preds, edges, visited, graph, parameters)
-    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, preds, succs, edges, visited | visited_f, graph, parameters)
+def run_greedy_both_ways(src, dst, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters):
+    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters)
+    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, preds, succs, edges, visited | visited_f, graph, strategy, parameters)
     return walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b
 
 
-def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
+def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
     """Iteratively search for contigs in a graph until the threshold is met."""
     graph = graph.to('cpu')
     all_contigs = []
@@ -182,7 +181,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
                 start_times[e] = datetime.now()
                 if DEBUG:
                     print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
-                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, heuristic_values, succs, preds, edges, visited, graph, parameters)
+                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters)
                 results[(src_init_edges, dst_init_edges)] = (future, e)
 
             if DEBUG:
@@ -303,7 +302,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
     return all_contigs
 
 
-def inference(data_path, model_path, assembler, savedir, parameters, device='cpu', dropout=None):
+def inference(data_path, model_path, assembler, savedir, strategy, parameters, device='cpu', dropout=None):
     """Using a pretrained model, get walks and contigs on new data."""
     hyperparameters = get_hyperparameters()
     seed = parameters['seed']
@@ -403,7 +402,7 @@ def inference(data_path, model_path, assembler, savedir, parameters, device='cpu
         graph.edata['prefix_length'] = graph.edata['prefix_length'].masked_fill(graph.edata['prefix_length']<0, 0)
         
         if strategy == 'greedy':
-            walks = get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
+            walks = get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
         else:
             print('Invalid decoding strategy')
             raise Exception
@@ -441,9 +440,8 @@ def inference(data_path, model_path, assembler, savedir, parameters, device='cpu
     print(f'Assembly saved in: {savedir}')
 
 
-def parse_args_based_on_strategy(args):
-    strategy = args.strat
-    parameters = {'strategy': strategy}
+def parse_args_based_on_strategy(strategy, args):
+    parameters = {}
     exceptions = []
 
     def parse_seed():
@@ -597,7 +595,8 @@ if __name__ == '__main__':
     parser.add_argument('--hf', type=str, help='Heuristic function of an edge')
     parser.add_argument('--hr', type=str, help='Reduce function that aggregates the heuristic values')
     args = parser.parse_args()
-    params = parse_args_based_on_strategy(args)
+    strat = args.strat
+    params = parse_args_based_on_strategy(strat, args)
     data = args.data
     asm = args.asm
     out = args.out
@@ -605,4 +604,4 @@ if __name__ == '__main__':
     if not model:
         model = 'weights/weights.pt'
 
-    inference(data_path=data, assembler=asm, model_path=model, savedir=out, parameters=params)
+    inference(data_path=data, assembler=asm, model_path=model, savedir=out, strategy=strat, parameters=params)
