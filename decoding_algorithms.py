@@ -129,7 +129,7 @@ def semi_random_search(start, heur_vals, neighbors, edges, visited_old, paramete
     return path, visited, path_heur_val
 
 
-def random_with_weights_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+def weighted_random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     curr = start
     visited = set()
     path = []

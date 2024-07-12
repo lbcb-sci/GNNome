@@ -18,8 +18,7 @@ import torch.nn.functional as F
 import dgl
 import warnings
 
-from decoding_algorithms import greedy_search, depth_d_search, top_k_search, semi_random_search, \
-    random_with_weights_search, random_search, beam_search
+from decoding_algorithms import greedy_search, depth_d_search, top_k_search, semi_random_search, weighted_random_search, beam_search
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 import models
@@ -84,7 +83,7 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
     if strategy == 'semi_random':
         return semi_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'weighted_random' or strategy == 'random_search':
-        return random_with_weights_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+        return weighted_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'beam':
         return beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     raise ValueError('Unknown strategy. Aborting process...')
@@ -451,10 +450,13 @@ def parse_args_based_on_strategy(args):
         try:
             seed = int(args.seed)
         except (TypeError, ValueError):
-            exceptions.append(Exception("Seed provided must be an integer"))
+            exceptions.append(Exception("Seed must be a positive integer"))
         else:
-            parameters['seed'] = seed
-            return seed
+            if seed < 0:
+                exceptions.append(Exception("Seed must be a non-negative integer"))
+            else:
+                parameters['seed'] = seed
+                return seed
         
     def polynomial(x, coeffs):
         result = 0
@@ -504,11 +506,11 @@ def parse_args_based_on_strategy(args):
         except (AttributeError, TypeError, ValueError):
             exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
         else:
+            if coeffs[0] == 0:
+                warnings.warn("Leading coefficient is 0")
             if not any(coeffs):
                 exceptions.append(Exception("Coefficients cannot all be 0"))
             else:
-                if coeffs[0] == 0:
-                    warnings.warn("Leading coefficient is 0")
                 coeffs.reverse()
                 f = lambda x: polynomial(x, coeffs)
                 parameters['heuristic_value_to_probability'] = f
