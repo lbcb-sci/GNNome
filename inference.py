@@ -83,10 +83,8 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
         return top_k_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'semi_random':
         return semi_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
-    if strategy == 'weighted_random':
+    if strategy == 'weighted_random' or strategy == 'random_search':
         return random_with_weights_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
-    if strategy == 'random_search':
-        return random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'beam':
         return beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     raise ValueError('Unknown strategy. Aborting process...')
@@ -309,7 +307,7 @@ def get_contigs_greedy(graph, succs, preds, edges, parameters, nb_paths=50, len_
 def inference(data_path, model_path, assembler, savedir, parameters, device='cpu', dropout=None):
     """Using a pretrained model, get walks and contigs on new data."""
     hyperparameters = get_hyperparameters()
-    seed = parameters['seed'] if 'seed' in parameters else hyperparameters['seed']
+    seed = parameters['seed']
     num_gnn_layers = hyperparameters['num_gnn_layers']
     hidden_features = hyperparameters['dim_latent']
     nb_pos_enc = hyperparameters['nb_pos_enc']
@@ -453,12 +451,16 @@ def parse_args_based_on_strategy(args):
         try:
             seed = int(args.seed)
         except (TypeError, ValueError):
-            if args.seed is None:
-                print("Seed is not specified. Defaulting to seed in hyperparameters...")
-            else:
-                exceptions.append(Exception("Seed provided must be an integer"))
+            exceptions.append(Exception("Seed provided must be an integer"))
         else:
             parameters['seed'] = seed
+            return seed
+        
+    def polynomial(x, coeffs):
+        result = 0
+        for i in range(len(coeffs)):
+            result += coeffs[i] * x ** i
+        return result
 
     if strategy == 'greedy':
         return parameters
@@ -505,15 +507,10 @@ def parse_args_based_on_strategy(args):
             if not any(coeffs):
                 exceptions.append(Exception("Coefficients cannot all be 0"))
             else:
-                def func(x, coeffs):
-                    result = 0
-                    for i in range(len(coeffs)):
-                        result += coeffs[i] * x ** i
-                    return result
                 if coeffs[0] == 0:
                     warnings.warn("Leading coefficient is 0")
                 coeffs.reverse()
-                f = lambda x: func(x, coeffs)
+                f = lambda x: polynomial(x, coeffs)
                 parameters['heuristic_value_to_probability'] = f
         parse_seed()
 
@@ -525,8 +522,6 @@ def parse_args_based_on_strategy(args):
         else: 
             if polynomial_degree <= 0:
                 exceptions.append(Exception("Degree must be a positive integer"))
-            else:
-                parameters['polynomial_degree'] = polynomial_degree
         try:
             precision_in_decimal_places = int(args.dp)
         except (TypeError, ValueError):
@@ -534,9 +529,17 @@ def parse_args_based_on_strategy(args):
         else:
             if precision_in_decimal_places < 0:
                 exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
-            else:
-                parameters['precision_in_decimal_places'] = precision_in_decimal_places
-        parse_seed()
+        seed = parse_seed()
+        if not exceptions:
+            utils.set_seed(seed)
+            coeffs = []
+            for _ in range(polynomial_degree + 1):
+                coeff = random.uniform(0, 1)
+                coeff = round(coeff, precision_in_decimal_places)
+                coeffs.append(coeff)
+            coeffs[0] = 0
+            f = lambda x: polynomial(x, coeffs)
+            parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'beam':
         try:
@@ -578,7 +581,7 @@ if __name__ == '__main__':
     parser.add_argument('--asm', type=str, help='Assembler used')
     parser.add_argument('--out', type=str, help='Output directory')
     parser.add_argument('--model', type=str, default=None, help='Path to the model')
-    parser.add_argument('--seed', type=str, default=None, help='Seed used for random processes')
+    parser.add_argument('--seed', type=str, default=get_hyperparameters()['seed'], help='Seed used for random processes')
     parser.add_argument('--strat', type=str, default='greedy', help='Strategy used in decoding')
     parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
     parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')

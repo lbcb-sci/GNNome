@@ -164,51 +164,6 @@ def random_with_weights_search(start, heur_vals, neighbors, edges, visited_old, 
     return path, visited, path_heur_val
 
 
-def random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
-    curr = start
-    visited = set()
-    path = []
-    path_heur_val = torch.tensor([init_heur_val])
-    coeffs = []
-    seed = parameters['seed'] if 'seed' in parameters else hyperparameters['seed']
-    utils.set_seed(seed)
-    for i in range(parameters['polynomial_degree'] + 1):
-        coeff = random.uniform(0, 1)
-        coeff = round(coeff, parameters['precision_in_decimal_places'])
-        coeffs.append(coeff)
-    coeffs[0] = 0 # to remove constant; explained later
-    def func(x, coeffs):
-        result = 0
-        for i in range(len(coeffs)):
-            result += coeffs[i] * x ** i
-        return result
-    f = lambda x: func(x, coeffs)
-    while True:
-        path.append(curr)
-        visited.add(curr)
-        visited.add(curr ^ 1)
-        curr_neighbors = [n for n in neighbors[curr] if not (n in visited_old or n in visited)]
-        if not curr_neighbors:
-            break
-        neighbor_edges = [edges[curr, n] for n in curr_neighbors]
-        edge_heur_vals = torch.exp(heur_vals[neighbor_edges])
-        f_edge_heur_vals = torch.tensor([f(p) for p in edge_heur_vals])
-        edge_chances = f_edge_heur_vals / torch.sum(f_edge_heur_vals)
-        end_intervals = torch.cumsum(edge_chances, 0)
-        rand = random.uniform(0, 1)
-        if rand <= end_intervals[0]:
-            index = 0
-        for i in range(1, len(end_intervals)):
-            if end_intervals[i - 1] < rand <= end_intervals[i]:
-                index = i
-                break
-
-        heur_val = heur_vals[index]
-        path_heur_val = heur_reduce_func(path_heur_val, heur_val)
-        curr = curr_neighbors[index]
-    return path, visited, path_heur_val
-
-
 def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     curr = [start]
     visited = set()
