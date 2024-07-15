@@ -178,14 +178,14 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
         if not flattened_neighbors:
             break
         neighbor_edges = [edges[curr_paths[i][1][-1], n] for i in range(len(curr_neighbors)) for n in curr_neighbors[i]]
-        # for option 2
-        dead_end_nodes = set()
-        for i in range(len(curr_neighbors)):
-            if not curr_neighbors[i]:
-                dead_end_nodes.add(curr_paths[i][1][-1])
-        for curr_path in curr_paths:
-            if curr_path[1][-1] in dead_end_nodes:
-                candidate_paths.append(curr_path)
+        if parameters['option'] == 2:
+            dead_end_nodes = set()
+            for i in range(len(curr_neighbors)):
+                if not curr_neighbors[i]:
+                    dead_end_nodes.add(curr_paths[i][1][-1])
+            for curr_path in curr_paths:
+                if curr_path[1][-1] in dead_end_nodes:
+                    candidate_paths.append(curr_path)
 
         edge_heur_vals = heur_vals[neighbor_edges]
         if len(edge_heur_vals) < parameters['top_b']:
@@ -227,9 +227,8 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
                                 heapq.heappush(next_curr_paths, (new_sumLogProb, new_path, new_visited))
                             else:
                                 heapq.heapreplace(next_curr_paths, (new_sumLogProb, new_path, new_visited))
-            # for option 3
-            # else:
-                # candidate_paths.append(curr_path)
+            elif parameters['option'] == 3:
+                candidate_paths.append(curr_path)
                 
         curr_paths = next_curr_paths
         
@@ -240,12 +239,12 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
         if curr_path_heur_val > path_heur_val:
             path = curr_path[1]
             path_heur_val = curr_path_heur_val
-    # for both options 2 and 3
-    for curr_path in candidate_paths:
-        curr_path_heur_val = curr_path[0]
-        if curr_path_heur_val > path_heur_val:
-            path = curr_path[1]
-            path_heur_val = curr_path_heur_val
+    if parameters['option'] == 2 or parameters['option'] == 3:
+        for curr_path in candidate_paths:
+            curr_path_heur_val = curr_path[0]
+            if curr_path_heur_val > path_heur_val:
+                path = curr_path[1]
+                path_heur_val = curr_path_heur_val
     for node in path:
         visited.add(node)
         visited.add(node ^ 1)

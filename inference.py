@@ -448,7 +448,7 @@ def parse_args_based_on_strategy(strategy, args):
         try:
             seed = int(args.seed)
         except (TypeError, ValueError):
-            exceptions.append(Exception("Seed must be a positive integer"))
+            exceptions.append(Exception("Seed must be a non-negative integer"))
         else:
             if seed < 0:
                 exceptions.append(Exception("Seed must be a non-negative integer"))
@@ -556,15 +556,21 @@ def parse_args_based_on_strategy(strategy, args):
         except (TypeError, ValueError):
             exceptions.append(Exception("Top w must be a positive integer"))
         else:
+            if top_w < top_b:
+                warnings.warn("Top w is smaller than top b. Effectively, top b is equal to top w.")
             if top_w <= 0:
                 exceptions.append(Exception("Top w must be a positive integer"))
-            elif top_w < top_b:
-                warnings.warn("Top w is smaller than top b. Effectively, top b is equal to top w.")
             else:
                 parameters['top_w'] = top_w
-        option = args.opt
-        if option not in {1, 2, 3}:
+        try:
+            option = int(args.opt)
+        except (TypeError, ValueError):
             exceptions.append(Exception("Option must be 1, 2 or 3"))
+        else:
+            if option not in {1, 2, 3}:
+                exceptions.append(Exception("Option must be 1, 2 or 3"))
+            else:
+                parameters['option'] = option        
 
     else:
         raise ValueError('Unknown strategy. Aborting decoding process...')
