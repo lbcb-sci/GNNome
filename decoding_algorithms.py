@@ -217,16 +217,16 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
                 for i in range(len(path_neighbors)):
                     if path_neighbors[i] not in curr_path[1]:
                         new_edge = edges[curr_path[1][-1], path_neighbors[i]]
-                        new_sumLogProb = heur_reduce_func(curr_path[0], heur_vals[new_edge])
-                        if len(next_curr_paths) < parameters['top_w'] or new_sumLogProb > next_curr_paths[0][0]:
+                        new_path_heur_val = heur_reduce_func(curr_path[0], heur_vals[new_edge])
+                        if len(next_curr_paths) < parameters['top_w'] or new_path_heur_val > next_curr_paths[0][0]:
                             new_path = curr_path[1].copy()
                             new_path.append(path_neighbors[i])
                             new_visited = curr_path[2].copy()
                             new_visited.add(path_neighbors[i])
                             if len(next_curr_paths) < parameters['top_w']:
-                                heapq.heappush(next_curr_paths, (new_sumLogProb, new_path, new_visited))
+                                heapq.heappush(next_curr_paths, (new_path_heur_val, new_path, new_visited))
                             else:
-                                heapq.heapreplace(next_curr_paths, (new_sumLogProb, new_path, new_visited))
+                                heapq.heapreplace(next_curr_paths, (new_path_heur_val, new_path, new_visited))
             elif parameters['option'] == 3:
                 candidate_paths.append(curr_path)
                 

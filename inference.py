@@ -27,8 +27,6 @@ import utils
 
 DEBUG = False
 
-hyperparameters = get_hyperparameters()
-
 
 def get_contig_length(walk, graph):
     total_length = 0
@@ -121,6 +119,7 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
         probs = torch.sigmoid(graph.edata['score'].to('cpu'))
     p = lambda src, dst: probs[edges[src, dst]]
     l = lambda src, dst: graph.ndata['read_length'][dst]
+    hyperparameters = get_hyperparameters()
     heuristic_function = hyperparameters['heuristic_function']
     g = lambda src, dst: heuristic_function(p(src, dst), l(src, dst))
     heuristic_values = torch.tensor([g(src, dst) for (src, dst) in edges])
