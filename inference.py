@@ -315,7 +315,6 @@ def inference(data_path, model_path, assembler, savedir, strategy, parameters, d
     hidden_edge_features = hyperparameters['hidden_edge_features']
     hidden_edge_scores = hyperparameters['hidden_edge_scores']
 
-    strategy = hyperparameters['strategy']
     B = hyperparameters['B']
     nb_paths = hyperparameters['num_decoding_paths']
     len_threshold = hyperparameters['len_threshold']
@@ -400,11 +399,7 @@ def inference(data_path, model_path, assembler, savedir, strategy, parameters, d
         # Some prefixes can be <0 and that messes up the assemblies
         graph.edata['prefix_length'] = graph.edata['prefix_length'].masked_fill(graph.edata['prefix_length']<0, 0)
         
-        if strategy == 'greedy':
-            walks = get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
-        else:
-            print('Invalid decoding strategy')
-            raise Exception
+        walks = get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
  
         elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_walks)
         print(f'elapsed time (get_walks): {elapsed}')
