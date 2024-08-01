@@ -129,12 +129,11 @@ def semi_random_search(start, heur_vals, neighbors, edges, visited_old, paramete
     return path, visited, path_heur_val
 
 
-def weighted_random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+def weighted_random_search(start, heur_vals, f_heur_vals, neighbors, edges, visited_old, parameters):
     curr = start
     visited = set()
     path = []
     path_heur_val = torch.tensor([init_heur_val])
-    f = parameters['heuristic_value_to_probability']
     while True:
         path.append(curr)
         visited.add(curr)
@@ -143,8 +142,7 @@ def weighted_random_search(start, heur_vals, neighbors, edges, visited_old, para
         if not curr_neighbors:
             break
         neighbor_edges = [edges[curr, n] for n in curr_neighbors]
-        edge_heur_vals = torch.exp(heur_vals[neighbor_edges])
-        f_edge_heur_vals = torch.tensor([f(p) for p in edge_heur_vals])
+        f_edge_heur_vals = f_heur_vals[neighbor_edges]
         edge_chances = f_edge_heur_vals / torch.sum(f_edge_heur_vals)
         end_intervals = torch.cumsum(edge_chances, 0) # e.g. [0.25, 0.45, 0.6, 1]
         rand = random.uniform(0, 1)

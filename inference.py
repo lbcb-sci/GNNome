@@ -69,8 +69,12 @@ def sample_edges(prob_edges, nb_paths):
     return idx_edges
 
 
-def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, visited_old, graph, strategy, parameters):
+def greedy_forwards(start, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters):
     """Greedy walk forwards."""
+    if DEBUG:
+        print(f'Strategy used is: {strategy}')
+        print(f'Parameters for the strategy are: {parameters}')
+        
     if strategy == 'greedy':
         return greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'depth_d':
@@ -80,22 +84,22 @@ def greedy_forwards(start, heuristic_values, neighbors, predecessors, edges, vis
     if strategy == 'semi_random':
         return semi_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'weighted_random' or strategy == 'random_search':
-        return weighted_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+        return weighted_random_search(start, heuristic_values, f_heuristic_values, neighbors, edges, visited_old, parameters)
     if strategy == 'beam':
         return beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
     raise ValueError('Unknown strategy. Aborting process...')
 
 
-def greedy_backwards_rc(start, heuristic_values, predecessors, neighbors, edges, visited_old, graph, strategy, parameters):
+def greedy_backwards_rc(start, heuristic_values, f_heuristic_values, graph, predecessors, neighbors, edges, visited_old, strategy, parameters):
     """Greedy walk backwards."""
-    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, neighbors, predecessors, edges, visited_old, graph, strategy, parameters)
+    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters)
     walk = list(reversed([edge_id ^ 1 for edge_id in walk]))
     return walk, visited, path_heuristic_value
     
 
-def run_greedy_both_ways(src, dst, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters):
-    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters)
-    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, preds, succs, edges, visited | visited_f, graph, strategy, parameters)
+def run_greedy_both_ways(src, dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters):
+    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
+    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, f_heuristic_values, graph, preds, succs, edges, visited | visited_f, strategy, parameters)
     return walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b
 
 
@@ -123,6 +127,11 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
     heuristic_function = hyperparameters['heuristic_function']
     g = lambda src, dst: heuristic_function(p(src, dst), l(src, dst))
     heuristic_values = torch.tensor([g(src, dst) for (src, dst) in edges])
+    
+    f_heuristic_values = None
+    if 'heuristic_value_to_probability' in parameters:
+        f = parameters['heuristic_value_to_probability']
+        f_heuristic_values = f(heuristic_values)
 
     print(f'Starting to decode with greedy...')
     print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
@@ -180,7 +189,7 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
                 start_times[e] = datetime.now()
                 if DEBUG:
                     print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
-                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, heuristic_values, succs, preds, edges, visited, graph, strategy, parameters)
+                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
                 results[(src_init_edges, dst_init_edges)] = (future, e)
 
             if DEBUG:
@@ -457,7 +466,8 @@ def parse_args_based_on_strategy(strategy, args):
         return result
 
     if strategy == 'greedy':
-        return parameters
+        pass
+    
     elif strategy == 'depth_d':
         try:
             depth = int(args.depth)
@@ -477,7 +487,6 @@ def parse_args_based_on_strategy(strategy, args):
                 exceptions.append(Exception("Top k must be a positive integer"))
             else:
                 parameters['top_k'] = top_k
-        parse_seed()
 
     elif strategy == 'semi_random':
         try:
@@ -489,7 +498,6 @@ def parse_args_based_on_strategy(strategy, args):
                 exceptions.append(Exception("Chance must be between 0 and 1 (inclusive)"))
             else:
                 parameters['random_chance'] = random_chance
-        parse_seed()
 
     elif strategy == 'weighted_random':
         # for now, only polynomials (with decimal representation of coefficients) allowed!
@@ -506,7 +514,6 @@ def parse_args_based_on_strategy(strategy, args):
                 coeffs.reverse()
                 f = lambda x: polynomial(x, coeffs)
                 parameters['heuristic_value_to_probability'] = f
-        parse_seed()
 
     elif strategy == 'random_search':
         try:
@@ -564,11 +571,12 @@ def parse_args_based_on_strategy(strategy, args):
             if option not in {1, 2, 3}:
                 exceptions.append(Exception("Option must be 1, 2 or 3"))
             else:
-                parameters['option'] = option        
+                parameters['option'] = option
 
     else:
         raise ValueError('Unknown strategy. Aborting decoding process...')
     
+    parse_seed()
     if exceptions:
         exception_message = "\n".join(str(exception) for exception in exceptions)
         raise Exception(exception_message)
