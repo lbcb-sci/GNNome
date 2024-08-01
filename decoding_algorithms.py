@@ -153,8 +153,6 @@ def weighted_random_search(start, heur_vals, f_heur_vals, neighbors, edges, visi
                 if end_intervals[i - 1] < rand <= end_intervals[i]:
                     index = i
                     break
-        # start_interval = torch.cat(torch.tensor([0]), end_interval) # 
-        # start_interval.pop()
 
         heur_val = heur_vals[index]
         path_heur_val = heur_reduce_func(path_heur_val, heur_val)

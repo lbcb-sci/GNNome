@@ -56,5 +56,6 @@ def get_hyperparameters():
         'heuristic_function': lambda prob, length: math.log(prob),
         'heuristic_reduce_function': lambda curr, new: curr + new,
         'initial_heuristic_value': 0.0,
+        'weighted_random_function': lambda prob: -torch.sqrt(1 - prob ** 2) + 1,
     }
 

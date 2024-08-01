@@ -127,11 +127,12 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
     heuristic_function = hyperparameters['heuristic_function']
     g = lambda src, dst: heuristic_function(p(src, dst), l(src, dst))
     heuristic_values = torch.tensor([g(src, dst) for (src, dst) in edges])
-    
+
     f_heuristic_values = None
     if 'heuristic_value_to_probability' in parameters:
         f = parameters['heuristic_value_to_probability']
         f_heuristic_values = f(heuristic_values)
+
 
     print(f'Starting to decode with greedy...')
     print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
@@ -500,20 +501,28 @@ def parse_args_based_on_strategy(strategy, args):
                 parameters['random_chance'] = random_chance
 
     elif strategy == 'weighted_random':
-        # for now, only polynomials (with decimal representation of coefficients) allowed!
-        try:
-            coeffs = list(map(float, args.coeffs.split(',')))
-        except (AttributeError, TypeError, ValueError):
-            exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
+        if args.use_code_fn and args.coeffs is not None:
+            exceptions.append(Exception("use_code_fn flag cannot be used with coeffs flag"))
+        elif args.use_code_fn:
+            parameters['heuristic_value_to_probability'] = get_hyperparameters()['weighted_random_function']
         else:
-            if coeffs[0] == 0:
-                warnings.warn("Leading coefficient is 0")
-            if not any(coeffs):
-                exceptions.append(Exception("Coefficients cannot all be 0"))
+            # for now, only polynomials (with decimal representation of coefficients) allowed!
+            # set '1,0,0,0,0' as default value
+            if args.coeffs is None:
+                args.coeffs = '1,0,0,0,0'
+            try:
+                coeffs = list(map(float, args.coeffs.split(',')))
+            except (AttributeError, TypeError, ValueError):
+                exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
             else:
-                coeffs.reverse()
-                f = lambda x: polynomial(x, coeffs)
-                parameters['heuristic_value_to_probability'] = f
+                if coeffs[0] == 0:
+                    warnings.warn("Leading coefficient is 0")
+                if not any(coeffs):
+                    exceptions.append(Exception("Coefficients cannot all be 0"))
+                else:
+                    coeffs.reverse()
+                    f = lambda x: polynomial(x, coeffs)
+                    parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'random_search':
         try:
@@ -594,7 +603,9 @@ if __name__ == '__main__':
     parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
     parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')
     parser.add_argument('--chance', type=str, default=0.125, help='Probability of selecting random edge')
-    parser.add_argument('--coeffs', type=str, default='1,0,0,0,0', help='Coefficients of polynomial, starting from highest power, separated by commas')
+    # default value is actually '1,0,0,0,0', None is just a sentinel value
+    parser.add_argument('--coeffs', type=str, default=None, help='Coefficients of polynomial, starting from highest power, separated by commas')
+    parser.add_argument('--use_code_fn', action='store_true', default=False, help='Uses the function f specified in hyperparameters, instead of user-specified polynomial')
     parser.add_argument('--deg', type=str, default=4, help='Degree of polynomial')
     parser.add_argument('--dp', type=str, default=1, help='Number of decimal places in which coefficients are rounded off to')
     parser.add_argument('--b', type=str, default=2, help='Top b edges to select')
