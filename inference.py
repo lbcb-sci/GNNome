@@ -503,7 +503,7 @@ def parse_args_based_on_strategy(strategy, args):
         if validated_value is not None:
             parameters[key] = validated_value
         
-    def validate_and_set_natural_number_parameter(value, name, key, include_zero):
+    def validate_natural_number_and_set_parameter(value, name, key, include_zero):
         validated_value = validate_natural_number(value, name, include_zero)
         set_parameter(validated_value, key)
         return validated_value
@@ -514,16 +514,16 @@ def parse_args_based_on_strategy(strategy, args):
             result += coeffs[i] * x ** i
         return result
     
-    seed = validate_and_set_natural_number_parameter(args.seed, "Seed", 'seed', include_zero=True)
+    seed = validate_natural_number_and_set_parameter(args.seed, "Seed", 'seed', include_zero=True)
 
     if strategy == 'greedy':
         pass
     
     elif strategy == 'depth_d':
-        validate_and_set_natural_number_parameter(args.depth, "Depth", key='depth', include_zero=False)
+        validate_natural_number_and_set_parameter(args.depth, "Depth", key='depth', include_zero=False)
 
     elif strategy == 'top_k':
-        validate_and_set_natural_number_parameter(args.k, "Top k", key='top_k', include_zero=False)
+        validate_natural_number_and_set_parameter(args.k, "Top k", key='top_k', include_zero=False)
 
     elif strategy == 'semi_random':
         try:
@@ -537,20 +537,33 @@ def parse_args_based_on_strategy(strategy, args):
                 parameters['random_chance'] = random_chance
 
     elif strategy == 'weighted_random':
-        # for now, only polynomials (with decimal representation of coefficients) allowed!
-        try:
-            coeffs = list(map(float, args.coeffs.split(',')))
-        except (AttributeError, TypeError, ValueError):
-            exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
+        if args.use_code_fn and args.coeffs is not None:
+            exceptions.append(Exception("use_code_fn flag cannot be used with coeffs flag"))
+        elif args.use_code_fn:
+            code_fn = get_hyperparameters()['weighted_random_function']
+            if DEBUG:
+                print(f'Using code_fn: {code_fn}')
+            parameters['heuristic_value_to_probability'] = get_hyperparameters()['weighted_random_function']
         else:
-            if coeffs[0] == 0:
-                warnings.warn("Leading coefficient is 0")
-            if not any(coeffs):
-                exceptions.append(Exception("Coefficients cannot all be 0"))
+        # for now, only polynomials (with decimal representation of coefficients) allowed!
+        # set '1,0,0,0,0' as default value
+            if args.coeffs is None:
+                args.coeffs = '1,0,0,0,0'
+            try:
+                coeffs = list(map(float, args.coeffs.split(',')))
+            except (AttributeError, TypeError, ValueError):
+                exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
             else:
-                coeffs.reverse()
-                f = lambda x: polynomial(x, coeffs)
-                parameters['heuristic_value_to_probability'] = f
+                if coeffs[0] == 0:
+                    warnings.warn("Leading coefficient is 0")
+                if not any(coeffs):
+                    exceptions.append(Exception("Coefficients cannot all be 0"))
+                else:
+                    coeffs.reverse()
+                    if DEBUG:
+                        print(f'The coefficients are: {coeffs}')
+                    f = lambda x: polynomial(x, coeffs)
+                    parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'random_search':
         polynomial_degree = validate_natural_number(args.deg, "Degree", include_zero=False)
@@ -563,32 +576,26 @@ def parse_args_based_on_strategy(strategy, args):
                 coeff = round(coeff, precision_in_decimal_places)
                 coeffs.append(coeff)
             coeffs[0] = 0
+            if DEBUG:
+                parameters = {'seed': seed, 'degree': polynomial_degree, 'decimal_places': precision_in_decimal_places}
+                print(f'The parameters are: {parameters}')
+                print(f'The coefficients are: {coeffs}')
             f = lambda x: polynomial(x, coeffs)
             parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'beam':
-        top_b = validate_natural_number(args.b, "Top b", include_zero=False)
-        set_parameter(top_b, 'top_b')
-        try:
-            top_w = int(args.w)
-        except (TypeError, ValueError):
-            exceptions.append(Exception("Top w must be a positive integer"))
-        else:
-            if top_w < top_b:
-                warnings.warn("Top w is smaller than top b. Effectively, top b is equal to top w.")
-            if top_w <= 0:
-                exceptions.append(Exception("Top w must be a positive integer"))
-            else:
-                parameters['top_w'] = top_w
+        top_b = validate_natural_number_and_set_parameter(args.b, "Top b", key='top_b', include_zero=False)
+        top_w = validate_natural_number_and_set_parameter(args.w, "Top w", key='top_w', include_zero=False)
+        if not (top_b is None or top_w is None) and top_w < top_b:
+            warnings.warn("Top w is smaller than top b. Effectively, top b is equal to top w.")
         try:
             option = int(args.opt)
+            if option not in {1, 2, 3}:
+                ValueError
         except (TypeError, ValueError):
             exceptions.append(Exception("Option must be 1, 2 or 3"))
         else:
-            if option not in {1, 2, 3}:
-                exceptions.append(Exception("Option must be 1, 2 or 3"))
-            else:
-                parameters['option'] = option
+            parameters['option'] = option
 
     else:
         raise ValueError('Unknown strategy. Aborting decoding process...')
