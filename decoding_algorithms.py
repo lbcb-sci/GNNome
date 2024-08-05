@@ -146,7 +146,9 @@ def weighted_random_search(start, heur_vals, f_heur_vals, neighbors, edges, visi
         edge_chances = f_edge_heur_vals / torch.sum(f_edge_heur_vals)
         end_intervals = torch.cumsum(edge_chances, 0) # e.g. [0.25, 0.45, 0.6, 1]
         rand = random.uniform(0, 1)
-        if rand <= end_intervals[0]:
+        if torch.sum(f_edge_heur_vals) == 0:
+            index = random.randint(0, len(end_intervals) - 1)
+        elif rand <= end_intervals[0]:
             index = 0
         else:
             for i in range(1, len(end_intervals)):
