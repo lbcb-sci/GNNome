@@ -25,7 +25,7 @@ import models
 import evaluate
 import utils
 
-DEBUG = False
+DEBUG = True
 
 
 def get_contig_length(walk, graph):
@@ -445,49 +445,85 @@ def inference(data_path, model_path, assembler, savedir, strategy, parameters, d
 
 
 def parse_args_based_on_strategy(strategy, args):
+    """
+    Parses and returns the parameters (as a dictionary) according to the strategy specified.
+
+    Raises
+    ------
+    ValueError
+        If the strategy is invalid.
+    Exception
+        If the user-supplied values for the command flags corresponding to the parameters are invalid.
+    """
     parameters = {}
     exceptions = []
 
-    def parse_seed():
+    def validate_natural_number(value, name, include_zero):
+        """
+        Validates a natural number of a command flag. Returns the natural number if it is valid, or adds an Exception
+        and returns None if it is invalid.
+
+        Parameters
+        ----------
+        value: int
+            Value of a command flag, supplied by the user 
+        name: str
+            Name of the variable to appear in the exception message
+        include_zero: bool
+            Validates a non-negative integer if True; validates a positive integer if False
+        """
         try:
-            seed = int(args.seed)
+            int_value = int(value)
+            if include_zero:
+                if int_value < 0:
+                    raise ValueError
+            else:    
+                if int_value <= 0:
+                    raise ValueError
         except (TypeError, ValueError):
-            exceptions.append(Exception("Seed must be a non-negative integer"))
-        else:
-            if seed < 0:
-                exceptions.append(Exception("Seed must be a non-negative integer"))
+            if include_zero:
+                exceptions.append(Exception(f"{name} must be a non-negative integer"))
             else:
-                parameters['seed'] = seed
-                return seed
+                exceptions.append(Exception(f"{name} must be a positive integer"))
+            return None
+        else:
+            return int_value
+        
+    def set_parameter(validated_value, key):
+        """
+        Adds a (key, value) pair to parameters if the value is valid.
+
+        Parameters
+        ----------
+        validated_value: Any
+            The value attribute of the pair. If it is invalid, it is None.
+        key: str
+            The key attribute of the pair.
+        """
+        if validated_value is not None:
+            parameters[key] = validated_value
+        
+    def validate_and_set_natural_number_parameter(value, name, key, include_zero):
+        validated_value = validate_natural_number(value, name, include_zero)
+        set_parameter(validated_value, key)
+        return validated_value
         
     def polynomial(x, coeffs):
         result = 0
         for i in range(len(coeffs)):
             result += coeffs[i] * x ** i
         return result
+    
+    seed = validate_and_set_natural_number_parameter(args.seed, "Seed", 'seed', include_zero=True)
 
     if strategy == 'greedy':
         pass
     
     elif strategy == 'depth_d':
-        try:
-            depth = int(args.depth)
-        except (TypeError, ValueError):
-            raise Exception("Depth must be a positive integer")
-        if depth <= 0:
-            raise Exception("Depth must be a positive integer")
-        parameters['depth'] = depth
+        validate_and_set_natural_number_parameter(args.depth, "Depth", key='depth', include_zero=False)
 
     elif strategy == 'top_k':
-        try:
-            top_k = int(args.k)
-        except (TypeError, ValueError):
-            exceptions.append(Exception("Top k must be a positive integer"))
-        else:
-            if top_k <= 0:
-                exceptions.append(Exception("Top k must be a positive integer"))
-            else:
-                parameters['top_k'] = top_k
+        validate_and_set_natural_number_parameter(args.k, "Top k", key='top_k', include_zero=False)
 
     elif strategy == 'semi_random':
         try:
@@ -501,45 +537,24 @@ def parse_args_based_on_strategy(strategy, args):
                 parameters['random_chance'] = random_chance
 
     elif strategy == 'weighted_random':
-        if args.use_code_fn and args.coeffs is not None:
-            exceptions.append(Exception("use_code_fn flag cannot be used with coeffs flag"))
-        elif args.use_code_fn:
-            parameters['heuristic_value_to_probability'] = get_hyperparameters()['weighted_random_function']
+        # for now, only polynomials (with decimal representation of coefficients) allowed!
+        try:
+            coeffs = list(map(float, args.coeffs.split(',')))
+        except (AttributeError, TypeError, ValueError):
+            exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
         else:
-            # for now, only polynomials (with decimal representation of coefficients) allowed!
-            # set '1,0,0,0,0' as default value
-            if args.coeffs is None:
-                args.coeffs = '1,0,0,0,0'
-            try:
-                coeffs = list(map(float, args.coeffs.split(',')))
-            except (AttributeError, TypeError, ValueError):
-                exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
+            if coeffs[0] == 0:
+                warnings.warn("Leading coefficient is 0")
+            if not any(coeffs):
+                exceptions.append(Exception("Coefficients cannot all be 0"))
             else:
-                if coeffs[0] == 0:
-                    warnings.warn("Leading coefficient is 0")
-                if not any(coeffs):
-                    exceptions.append(Exception("Coefficients cannot all be 0"))
-                else:
-                    coeffs.reverse()
-                    f = lambda x: polynomial(x, coeffs)
-                    parameters['heuristic_value_to_probability'] = f
+                coeffs.reverse()
+                f = lambda x: polynomial(x, coeffs)
+                parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'random_search':
-        try:
-            polynomial_degree = int(args.deg)
-        except (TypeError, ValueError):
-            exceptions.append(Exception("Degree must be a positive integer"))
-        else: 
-            if polynomial_degree <= 0:
-                exceptions.append(Exception("Degree must be a positive integer"))
-        try:
-            precision_in_decimal_places = int(args.dp)
-        except (TypeError, ValueError):
-            exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
-        else:
-            if precision_in_decimal_places < 0:
-                exceptions.append(Exception("Number of decimal places must be a non-negative integer"))
-        seed = parse_seed()
+        polynomial_degree = validate_natural_number(args.deg, "Degree", include_zero=False)
+        precision_in_decimal_places = validate_natural_number(args.dp, "Number of decimal places", include_zero=True)
         if not exceptions:
             utils.set_seed(seed)
             coeffs = []
@@ -552,15 +567,8 @@ def parse_args_based_on_strategy(strategy, args):
             parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'beam':
-        try:
-            top_b = int(args.b)
-        except (TypeError, ValueError):
-            exceptions.append(Exception("Top b must be a positive integer"))
-        else:
-            if top_b <= 0:
-                exceptions.append(Exception("Top b must be a positive integer"))
-            else:
-                parameters['top_b'] = top_b
+        top_b = validate_natural_number(args.b, "Top b", include_zero=False)
+        set_parameter(top_b, 'top_b')
         try:
             top_w = int(args.w)
         except (TypeError, ValueError):
@@ -585,7 +593,6 @@ def parse_args_based_on_strategy(strategy, args):
     else:
         raise ValueError('Unknown strategy. Aborting decoding process...')
     
-    parse_seed()
     if exceptions:
         exception_message = "\n".join(str(exception) for exception in exceptions)
         raise Exception(exception_message)
