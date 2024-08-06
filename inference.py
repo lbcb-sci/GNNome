@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from multiprocessing import Manager
 
 import heapq
+from printable_function import PrintableFunction
+from printable_polynomial import PrintablePolynomial
 import torch
 import torch.nn.functional as F
 import dgl
@@ -69,11 +71,42 @@ def sample_edges(prob_edges, nb_paths):
     return idx_edges
 
 
-def greedy_forwards(start, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters):
-    """Greedy walk forwards."""
+def search_forwards(start, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters):
+    """
+    Decides the forward search algorithm to perform, through the strategy specified in the command.
+
+    Parameters
+    ----------
+    start: int
+        The starting node of the search
+
+    heuristic_values: Tensor[float]
+        The scores of the nodes, whose id corresponds to the index in the list. It can be configured under hyperparameters.
+
+    f_heuristic_values: Tensor[float]
+        The scores of the nodes after being applied by a function, f, used in weighted_random.
+
+    neighbors: dict[int, List[int]]
+        The adjacency list of the graph. The key is a node id, and the value is the neighbors of the key.
+
+    edges: dict[(int, int), int]
+        The dictionary representing the edges with its source and destination nodes. The key is the (source, destination) pair of node ids, and the value is the edge id.
+    
+    visited_old: set(int)
+        The set containing the nodes that have already been visited, prior to this search.
+    
+    strategy: str
+        The strategy specified in the command. This determines the algorithm that will be used.
+    
+    parameters: dict[str, Any]
+        The dictionary containing the parameters used for an algorithm. The key is the name of a parameter, and the value is the value of the parameter. The parameters it contains depends on the strategy.
+    """
     if DEBUG:
         print(f'Strategy used is: {strategy}')
-        print(f'Parameters for the strategy are: {parameters}')
+        param_str = parameters.copy()
+        if 'heuristic_value_to_probability' in param_str:
+            param_str['heuristic_value_to_probability'] = str(param_str['heuristic_value_to_probability'])
+        print(f'Parameters for the strategy are: {param_str}')
         
     if strategy == 'greedy':
         return greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
@@ -90,20 +123,20 @@ def greedy_forwards(start, heuristic_values, f_heuristic_values, graph, neighbor
     raise ValueError('Unknown strategy. Aborting process...')
 
 
-def greedy_backwards_rc(start, heuristic_values, f_heuristic_values, graph, predecessors, neighbors, edges, visited_old, strategy, parameters):
-    """Greedy walk backwards."""
-    walk, visited, path_heuristic_value = greedy_forwards(start ^ 1, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters)
+def search_backwards_rc(start, heuristic_values, f_heuristic_values, graph, predecessors, neighbors, edges, visited_old, strategy, parameters):
+    """Peforms a backward search algorithm. Similar to search_forwards but in the reverse direction."""
+    walk, visited, path_heuristic_value = search_forwards(start ^ 1, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters)
     walk = list(reversed([edge_id ^ 1 for edge_id in walk]))
     return walk, visited, path_heuristic_value
     
 
-def run_greedy_both_ways(src, dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters):
-    walk_f, visited_f, path_heuristic_value_f = greedy_forwards(dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
-    walk_b, visited_b, path_heuristic_value_b = greedy_backwards_rc(src, heuristic_values, f_heuristic_values, graph, preds, succs, edges, visited | visited_f, strategy, parameters)
+def run_search_both_ways(src, dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters):
+    walk_f, visited_f, path_heuristic_value_f = search_forwards(dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
+    walk_b, visited_b, path_heuristic_value_b = search_backwards_rc(src, heuristic_values, f_heuristic_values, graph, preds, succs, edges, visited | visited_f, strategy, parameters)
     return walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b
 
 
-def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
+def get_contigs(graph, succs, preds, edges, strategy, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
     """Iteratively search for contigs in a graph until the threshold is met."""
     graph = graph.to('cpu')
     all_contigs = []
@@ -130,7 +163,7 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
 
     f_heuristic_values = None
     if 'heuristic_value_to_probability' in parameters:
-        f = parameters['heuristic_value_to_probability']
+        f = parameters['heuristic_value_to_probability'].function
         f_heuristic_values = f(heuristic_values)
 
 
@@ -190,7 +223,7 @@ def get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_path
                 start_times[e] = datetime.now()
                 if DEBUG:
                     print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
-                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
+                future = executor.submit(run_search_both_ways, src_init_edges, dst_init_edges, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
                 results[(src_init_edges, dst_init_edges)] = (future, e)
 
             if DEBUG:
@@ -409,7 +442,7 @@ def inference(data_path, model_path, assembler, savedir, strategy, parameters, d
         # Some prefixes can be <0 and that messes up the assemblies
         graph.edata['prefix_length'] = graph.edata['prefix_length'].masked_fill(graph.edata['prefix_length']<0, 0)
         
-        walks = get_contigs_greedy(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
+        walks = get_contigs(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
  
         elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_walks)
         print(f'elapsed time (get_walks): {elapsed}')
@@ -508,12 +541,6 @@ def parse_args_based_on_strategy(strategy, args):
         set_parameter(validated_value, key)
         return validated_value
         
-    def polynomial(x, coeffs):
-        result = 0
-        for i in range(len(coeffs)):
-            result += coeffs[i] * x ** i
-        return result
-    
     seed = validate_natural_number_and_set_parameter(args.seed, "Seed", 'seed', include_zero=True)
 
     if strategy == 'greedy':
@@ -540,10 +567,10 @@ def parse_args_based_on_strategy(strategy, args):
         if args.use_code_fn and args.coeffs is not None:
             exceptions.append(Exception("use_code_fn flag cannot be used with coeffs flag"))
         elif args.use_code_fn:
-            code_fn = get_hyperparameters()['weighted_random_function']
+            code_fn = PrintableFunction(get_hyperparameters()['weighted_random_function'])
             if DEBUG:
                 print(f'Using code_fn: {code_fn}')
-            parameters['heuristic_value_to_probability'] = get_hyperparameters()['weighted_random_function']
+            parameters['heuristic_value_to_probability'] = code_fn
         else:
         # for now, only polynomials (with decimal representation of coefficients) allowed!
         # set '1,0,0,0,0' as default value
@@ -560,9 +587,10 @@ def parse_args_based_on_strategy(strategy, args):
                     exceptions.append(Exception("Coefficients cannot all be 0"))
                 else:
                     coeffs.reverse()
+                    f = PrintablePolynomial(coeffs)
                     if DEBUG:
                         print(f'The coefficients are: {coeffs}')
-                    f = lambda x: polynomial(x, coeffs)
+                        print(f'The polynomial is: f(x) = {str(f)}')
                     parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'random_search':
@@ -580,7 +608,7 @@ def parse_args_based_on_strategy(strategy, args):
                 parameters = {'seed': seed, 'degree': polynomial_degree, 'decimal_places': precision_in_decimal_places}
                 print(f'The parameters are: {parameters}')
                 print(f'The coefficients are: {coeffs}')
-            f = lambda x: polynomial(x, coeffs)
+            f = PrintablePolynomial(coeffs)
             parameters['heuristic_value_to_probability'] = f
 
     elif strategy == 'beam':

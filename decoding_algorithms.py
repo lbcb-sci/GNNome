@@ -12,6 +12,11 @@ init_heur_val = hyperparameters['initial_heuristic_value']
 
 
 def greedy_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects the edge (and hence the node connected to the edge) with the highest heuristic value in each iteration.
+    
+    Refer to search_forwards for more information about the function parameters.
+    """
     curr = start
     visited = set()
     path = []
@@ -32,6 +37,17 @@ def greedy_search(start, heur_vals, neighbors, edges, visited_old, parameters):
 
 
 def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects the path of depth d (d-path) with the highest heuristic value in each iteration. The heuristic value of a 
+    d-path is obtained by using a reduce function (with a configurable binary operator) over the d nodes.
+    
+    Refer to search_forwards for more information about the function parameters.
+
+    Parameters
+    ----------
+    parameters: dict[str, int]
+        Has the form {'depth': d}
+    """
     curr = start
     visited = set()
     path = []
@@ -79,6 +95,16 @@ def depth_d_search(start, heur_vals, neighbors, edges, visited_old, parameters):
 
 
 def top_k_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects a random edge from edges with the k highest heuristic values in each iteration.
+    
+    Refer to search_forwards for more information about the function parameters.
+
+    Parameters
+    ----------
+    parameters: dict[str, int]
+        Has the form {'top_k': k}
+    """
     curr = start
     visited = set()
     path = []
@@ -105,6 +131,16 @@ def top_k_search(start, heur_vals, neighbors, edges, visited_old, parameters):
 
 
 def semi_random_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects the edge with the highest heuristic value with a certain chance. Otherwise, selects a random neighboring edge.
+    
+    Refer to search_forwards for more information about the function parameters.
+
+    Parameters
+    ----------
+    parameters: dict[str, float]
+        Has the form {'random_chance': chance}
+    """
     curr = start
     visited = set()
     path = []
@@ -130,6 +166,18 @@ def semi_random_search(start, heur_vals, neighbors, edges, visited_old, paramete
 
 
 def weighted_random_search(start, heur_vals, f_heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects an edge with a probability, defined by the function f applied to its heuristic value, divided by the sum of
+    f applied to the heuristic values of the neighbors. This allows the events of each edge being selected to be 
+    mutually exclusive.
+    
+    Refer to search_forwards for more information about the function parameters.
+
+    Parameters
+    ----------
+    parameters: dict[str, Any]
+        Has the form {'heuristic_value_to_probability': f}
+    """
     curr = start
     visited = set()
     path = []
@@ -163,6 +211,17 @@ def weighted_random_search(start, heur_vals, f_heur_vals, neighbors, edges, visi
 
 
 def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
+    """
+    Selects edges with the b highest heuristic values in each iteration, and keep walks with the k highest heuristic 
+    values. Whether a walk should be considered for the k highest heuristic values is determined by option.
+    
+    Refer to search_forwards for more information about the function parameters.
+
+    Parameters
+    ----------
+    parameters: dict[str, int]
+        Has the form {'top_b': b, 'top_w': w, 'option': opt}
+    """
     curr = [start]
     visited = set()
     curr_paths = [(init_heur_val, [start], {start})]
