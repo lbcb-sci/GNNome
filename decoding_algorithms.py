@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 import random
 
 import heapq
+from typing import List
 import torch
 import utils
 
@@ -222,27 +224,46 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
     parameters: dict[str, int]
         Has the form {'top_b': b, 'top_w': w, 'option': opt}
     """
-    curr = [start]
+    @dataclass
+    class PathInfo:
+        heur_val: float
+        path: List[int]
+        visited: List[int]
+
+        def __lt__(self, other):
+            assert isinstance(other, PathInfo)
+            return self.heur_val < other.heur_val
+        
+        def __eq__(self, other):
+            assert isinstance(other, PathInfo)
+            return self.heur_val == other.heur_val
+
+        def get_last_node(self):
+            assert self.path
+            if self.path:
+                return self.path[-1]
+            
     visited = set()
-    curr_paths = [(init_heur_val, [start], {start})]
+    paths_info = [PathInfo(init_heur_val, [start], {start})]
     candidate_paths = []
     path_heur_val = torch.tensor([init_heur_val])
     while True:
-        curr_neighbors = [[n for n in neighbors[curr_path[1][-1]] if not (n in visited_old or n in curr_path[2])] for curr_path in curr_paths]
-        flattened_neighbors = [n for curr_path in curr_paths for n in neighbors[curr_path[1][-1]] if not (n in visited_old or n in curr_path[2])]
+        # if stop and stop_preds[curr] > stop_thr: break
+        curr_neighbors = [[n for n in neighbors[path_info.get_last_node()] if not (n in visited_old or n in path_info.visited)] for path_info in paths_info]
+        flattened_neighbors = [n for path_info in paths_info for n in neighbors[path_info.get_last_node()] if not (n in visited_old or n in path_info.visited)]
         # flattened_neighbors = curr_neighbors.flatten() # consider aliasing if it doesnt cause unintended side effects, 
         # as it can save time and space
         if not flattened_neighbors:
             break
-        neighbor_edges = [edges[curr_paths[i][1][-1], n] for i in range(len(curr_neighbors)) for n in curr_neighbors[i]]
+        neighbor_edges = [edges[paths_info[i].get_last_node(), n] for i in range(len(curr_neighbors)) for n in curr_neighbors[i]]
         if parameters['option'] == 2:
             dead_end_nodes = set()
             for i in range(len(curr_neighbors)):
                 if not curr_neighbors[i]:
-                    dead_end_nodes.add(curr_paths[i][1][-1])
-            for curr_path in curr_paths:
-                if curr_path[1][-1] in dead_end_nodes:
-                    candidate_paths.append(curr_path)
+                    dead_end_nodes.add(paths_info[i].get_last_node())
+            for path_info in paths_info:
+                if path_info.get_last_node() in dead_end_nodes:
+                    candidate_paths.append(path_info)
 
         edge_heur_vals = heur_vals[neighbor_edges]
         if len(edge_heur_vals) < parameters['top_b']:
@@ -252,55 +273,60 @@ def beam_search(start, heur_vals, neighbors, edges, visited_old, parameters):
         top_num_indexes = torch.topk(edge_heur_vals, k=top_num, dim=0)[1]
         flattened_neighbors = torch.tensor(flattened_neighbors)
         neighbor_edges = torch.tensor(neighbor_edges)
-        curr = flattened_neighbors[top_num_indexes]
-        curr = list(set(curr.tolist()))
+        next_nodes = flattened_neighbors[top_num_indexes]
+        next_nodes = list(set(next_nodes.tolist()))
         top_k_edges = neighbor_edges[top_num_indexes]
 
+        # out of the top k edges, construct the neighbors dictionary
+        # this is done by checking if (last node of a path, node of next_node) is one of the top k edges, with time
+        # complexity of O(wb) (no parallel edges)
         paths_new_neighbors = {}
-        for curr_path in curr_paths:
-            for node in curr:
-                if (curr_path[1][-1], node) in edges and edges[curr_path[1][-1], node] in top_k_edges:
-                    if curr_path[1][-1] in paths_new_neighbors:
-                        paths_new_neighbors[curr_path[1][-1]].append(node)
+        for path_info in paths_info:
+            for node in next_nodes:
+                if (path_info.get_last_node(), node) in edges and edges[path_info.get_last_node(), node] in top_k_edges:
+                    if path_info.get_last_node() in paths_new_neighbors:
+                        paths_new_neighbors[path_info.get_last_node()].append(node)
                     else:
-                        paths_new_neighbors[curr_path[1][-1]] = [node]
+                        paths_new_neighbors[path_info.get_last_node()] = [node]
         for node in paths_new_neighbors:
             paths_new_neighbors[node] = list(set(paths_new_neighbors[node]))
 
-        next_curr_paths = []
-        for curr_path in curr_paths:
-            if curr_path[1][-1] in paths_new_neighbors:
-                path_neighbors = paths_new_neighbors[curr_path[1][-1]]
+        # for each path, for each neighbor of the last node of the path, make a new PathInfo
+        # only the top w PathInfo are kept
+        next_paths_info: List[PathInfo] = []
+        for path_info in paths_info:
+            if path_info.get_last_node() in paths_new_neighbors:
+                path_neighbors = paths_new_neighbors[path_info.get_last_node()]
                 for i in range(len(path_neighbors)):
-                    if path_neighbors[i] not in curr_path[1]:
-                        new_edge = edges[curr_path[1][-1], path_neighbors[i]]
-                        new_path_heur_val = heur_reduce_func(curr_path[0], heur_vals[new_edge])
-                        if len(next_curr_paths) < parameters['top_w'] or new_path_heur_val > next_curr_paths[0][0]:
-                            new_path = curr_path[1].copy()
+                    if path_neighbors[i] not in path_info.path:
+                        new_edge = edges[path_info.get_last_node(), path_neighbors[i]]
+                        new_path_heur_val = heur_reduce_func(path_info.heur_val, heur_vals[new_edge])
+                        if len(next_paths_info) < parameters['top_w'] or new_path_heur_val > next_paths_info[0].heur_val:
+                            new_path = path_info.path.copy()
                             new_path.append(path_neighbors[i])
-                            new_visited = curr_path[2].copy()
+                            new_visited = path_info.visited.copy()
                             new_visited.add(path_neighbors[i])
-                            if len(next_curr_paths) < parameters['top_w']:
-                                heapq.heappush(next_curr_paths, (new_path_heur_val, new_path, new_visited))
+                            if len(next_paths_info) < parameters['top_w']:
+                                heapq.heappush(next_paths_info, PathInfo(new_path_heur_val, new_path, new_visited))
                             else:
-                                heapq.heapreplace(next_curr_paths, (new_path_heur_val, new_path, new_visited))
+                                heapq.heapreplace(next_paths_info, PathInfo(new_path_heur_val, new_path, new_visited))
             elif parameters['option'] == 3:
-                candidate_paths.append(curr_path)
+                candidate_paths.append(path_info)
                 
-        curr_paths = next_curr_paths
+        paths_info = next_paths_info
         
     path_heur_val = -float('inf')
     path = []
-    for curr_path in curr_paths:
-        curr_path_heur_val = curr_path[0]
+    for path_info in paths_info:
+        curr_path_heur_val = path_info.heur_val
         if curr_path_heur_val > path_heur_val:
-            path = curr_path[1]
+            path = path_info.path
             path_heur_val = curr_path_heur_val
     if parameters['option'] == 2 or parameters['option'] == 3:
-        for curr_path in candidate_paths:
-            curr_path_heur_val = curr_path[0]
+        for path_info in candidate_paths:
+            curr_path_heur_val = path_info.heur_val
             if curr_path_heur_val > path_heur_val:
-                path = curr_path[1]
+                path = path_info.path
                 path_heur_val = curr_path_heur_val
     for node in path:
         visited.add(node)

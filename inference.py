@@ -27,7 +27,7 @@ import models
 import evaluate
 import utils
 
-DEBUG = True
+DEBUG = False
 
 
 def get_contig_length(walk, graph):
