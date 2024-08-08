@@ -12,10 +12,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from multiprocessing import Manager
 
+import heapq
+from printable_function import PrintableFunction
+from printable_polynomial import PrintablePolynomial
 import torch
 import torch.nn.functional as F
 import dgl
+import warnings
 
+from decoding_algorithms import greedy_search, depth_d_search, top_k_search, semi_random_search, weighted_random_search, beam_search
 from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 import models
@@ -35,15 +40,15 @@ def get_contig_length(walk, graph):
     return total_length
 
 
-def get_subgraph(g, visited, device):
+def get_subgraph(graph, visited, device):
     """Remove the visited nodes from the graph."""
     remove_node_idx = torch.LongTensor([item for item in visited])
-    list_node_idx = torch.arange(g.num_nodes())
-    keep_node_idx = torch.ones(g.num_nodes())
+    list_node_idx = torch.arange(graph.num_nodes())
+    keep_node_idx = torch.ones(graph.num_nodes())
     keep_node_idx[remove_node_idx] = 0
     keep_node_idx = list_node_idx[keep_node_idx==1].int().to(device)
 
-    sub_g = dgl.node_subgraph(g, keep_node_idx, store_ids=True)
+    sub_g = dgl.node_subgraph(graph, keep_node_idx, store_ids=True)
     sub_g.ndata['idx_nodes'] = torch.arange(sub_g.num_nodes()).to(device)
     map_subg_to_g = sub_g.ndata[dgl.NID]
     return sub_g, map_subg_to_g
@@ -66,84 +71,74 @@ def sample_edges(prob_edges, nb_paths):
     return idx_edges
 
 
-def greedy_forwards(start, logProbs, neighbors, predecessors, edges, visited_old):
-    """Greedy walk forwards."""
-    current = start
-    walk = []
-    visited = set()
-    sumLogProb = torch.tensor([0.0])
-    iteration = 0
-    while True:
-        walk.append(current)
-        visited.add(current)
-        visited.add(current ^ 1)
-        neighs_current = neighbors[current]
-        if len(neighs_current) == 0:
-            break 
-        if len(neighs_current) == 1:
-            neighbor = neighs_current[0]
-            if neighbor in visited_old or neighbor in visited:
-                break
-            else:
-                sumLogProb += logProbs[edges[current, neighbor]]
-                current = neighbor
-                continue
-        masked_neighbors = [n for n in neighs_current if not (n in visited_old or n in visited)]
-        neighbor_edges = [edges[current, n] for n in masked_neighbors]
-        if not neighbor_edges:
-            break
-        neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
-        sumLogProb += logProb
-        iteration += 1
-        current = masked_neighbors[index]
-    return walk, visited, sumLogProb
+def search_forwards(start, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters):
+    """
+    Decides the forward search algorithm to perform, through the strategy specified in the command.
+
+    Parameters
+    ----------
+    start: int
+        The starting node of the search
+
+    heuristic_values: Tensor[float]
+        The scores of the nodes, whose id corresponds to the index in the list. It can be configured under hyperparameters.
+
+    f_heuristic_values: Tensor[float]
+        The scores of the nodes after being applied by a function, f, used in weighted_random.
+
+    neighbors: dict[int, List[int]]
+        The adjacency list of the graph. The key is a node id, and the value is the neighbors of the key.
+
+    edges: dict[(int, int), int]
+        The dictionary representing the edges with its source and destination nodes. The key is the (source, destination) pair of node ids, and the value is the edge id.
+    
+    visited_old: set(int)
+        The set containing the nodes that have already been visited, prior to this search.
+    
+    strategy: str
+        The strategy specified in the command. This determines the algorithm that will be used.
+    
+    parameters: dict[str, Any]
+        The dictionary containing the parameters used for an algorithm. The key is the name of a parameter, and the value is the value of the parameter. The parameters it contains depends on the strategy.
+    """
+    if DEBUG:
+        print(f'Strategy used is: {strategy}')
+        param_str = parameters.copy()
+        if 'heuristic_value_to_probability' in param_str:
+            param_str['heuristic_value_to_probability'] = str(param_str['heuristic_value_to_probability'])
+        print(f'Parameters for the strategy are: {param_str}')
+        
+    if strategy == 'greedy':
+        return greedy_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+    if strategy == 'depth_d':
+        return depth_d_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+    if strategy == 'top_k':
+        return top_k_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+    if strategy == 'semi_random':
+        return semi_random_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+    if strategy == 'weighted_random' or strategy == 'random_search':
+        return weighted_random_search(start, heuristic_values, f_heuristic_values, neighbors, edges, visited_old, parameters)
+    if strategy == 'beam':
+        return beam_search(start, heuristic_values, neighbors, edges, visited_old, parameters)
+    raise ValueError('Unknown strategy. Aborting process...')
 
 
-def greedy_backwards_rc(start, logProbs, predecessors, neighbors, edges, visited_old):
-    """Greedy walk backwards."""
-    current = start ^ 1
-    walk = []
-    visited = set()
-    sumLogProb = torch.tensor([0.0])
-    iteration = 0
-    while True:
-        walk.append(current)
-        visited.add(current)
-        visited.add(current ^ 1)
-        neighs_current = neighbors[current]
-        if len(neighs_current) == 0:
-            break 
-        if len(neighs_current) == 1:
-            neighbor = neighs_current[0]
-            if neighbor in visited_old or neighbor in visited:
-                break
-            else:
-                sumLogProb += logProbs[edges[current, neighbor]]
-                current = neighbor
-                continue
-        masked_neighbors = [n for n in neighs_current if not (n in visited_old or n in visited)]
-        neighbor_edges = [edges[current, n] for n in masked_neighbors]
-        if not neighbor_edges:
-            break
-        neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
-        sumLogProb += logProb
-        iteration += 1
-        current = masked_neighbors[index]
-    walk = list(reversed([w ^ 1 for w in walk]))
-    return walk, visited, sumLogProb
+def search_backwards_rc(start, heuristic_values, f_heuristic_values, graph, predecessors, neighbors, edges, visited_old, strategy, parameters):
+    """Peforms a backward search algorithm. Similar to search_forwards but in the reverse direction."""
+    walk, visited, path_heuristic_value = search_forwards(start ^ 1, heuristic_values, f_heuristic_values, graph, neighbors, predecessors, edges, visited_old, strategy, parameters)
+    walk = list(reversed([edge_id ^ 1 for edge_id in walk]))
+    return walk, visited, path_heuristic_value
     
 
-def run_greedy_both_ways(src, dst, logProbs, succs, preds, edges, visited):
-    walk_f, visited_f, sumLogProb_f = greedy_forwards(dst, logProbs, succs, preds, edges, visited)
-    walk_b, visited_b, sumLogProb_b = greedy_backwards_rc(src, logProbs, preds, succs, edges, visited | visited_f)
-    return walk_f, walk_b, visited_f, visited_b, sumLogProb_f, sumLogProb_b
+def run_search_both_ways(src, dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters):
+    walk_f, visited_f, path_heuristic_value_f = search_forwards(dst, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
+    walk_b, visited_b, path_heuristic_value_b = search_backwards_rc(src, heuristic_values, f_heuristic_values, graph, preds, succs, edges, visited | visited_f, strategy, parameters)
+    return walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b
 
 
-def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
+def get_contigs(graph, succs, preds, edges, strategy, parameters, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
     """Iteratively search for contigs in a graph until the threshold is met."""
-    g = g.to('cpu')
+    graph = graph.to('cpu')
     all_contigs = []
     all_walks_len = []
     all_contigs_len = []
@@ -153,12 +148,24 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
     B = 1
 
     if use_labels:
-        scores = g.edata['y'].to('cpu')
+        scores = graph.edata['y'].to('cpu')
         scores = scores.masked_fill(scores<1e-9, 1e-9)
-        logProbs = torch.log(scores)
+        probs = scores
     else:
-        scores = g.edata['score'].to('cpu')
-        logProbs = torch.log(torch.sigmoid(g.edata['score'].to('cpu')))
+        scores = graph.edata['score'].to('cpu')
+        probs = torch.sigmoid(graph.edata['score'].to('cpu'))
+    p = lambda src, dst: probs[edges[src, dst]]
+    l = lambda src, dst: graph.ndata['read_length'][dst]
+    hyperparameters = get_hyperparameters()
+    heuristic_function = hyperparameters['heuristic_function']
+    g = lambda src, dst: heuristic_function(p(src, dst), l(src, dst))
+    heuristic_values = torch.tensor([g(src, dst) for (src, dst) in edges])
+
+    f_heuristic_values = None
+    if 'heuristic_value_to_probability' in parameters:
+        f = parameters['heuristic_value_to_probability'].function
+        f_heuristic_values = f(heuristic_values)
+
 
     print(f'Starting to decode with greedy...')
     print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
@@ -176,7 +183,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
     while True:
         idx_contig += 1       
         time_start_sample_edges = datetime.now()
-        sub_g, map_subg_to_g = get_subgraph(g, visited, 'cpu')
+        sub_g, map_subg_to_g = get_subgraph(graph, visited, 'cpu')
         if sub_g.num_edges() == 0:
             break
         
@@ -194,12 +201,12 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         all_visited_iter = []
 
         all_contig_lens = []
-        all_sumLogProbs = []
-        all_meanLogProbs = []
-        all_meanLogProbs_scaled = []
+        all_path_heuristic_value = []
+        all_mean_heuristic_value = []
+        all_mean_heuristic_value_scaled = []
 
         print(f'\nidx_contig: {idx_contig}, nb_processed_nodes: {len(visited)}, ' \
-              f'nb_remaining_nodes: {g.num_nodes() - len(visited)}, nb_original_nodes: {g.num_nodes()}')
+              f'nb_remaining_nodes: {graph.num_nodes() - len(visited)}, nb_original_nodes: {graph.num_nodes()}')
 
         # Get nb_paths paths for a single iteration, then take the longest one
         time_start_get_candidates = datetime.now()
@@ -216,7 +223,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
                 start_times[e] = datetime.now()
                 if DEBUG:
                     print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
-                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, logProbs, succs, preds, edges, visited)
+                future = executor.submit(run_search_both_ways, src_init_edges, dst_init_edges, heuristic_values, f_heuristic_values, graph, succs, preds, edges, visited, strategy, parameters)
                 results[(src_init_edges, dst_init_edges)] = (future, e)
 
             if DEBUG:
@@ -234,50 +241,50 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
 
             indx = 0
             for k, (f, e) in results.items():  # key, future -> Why did I not name this properly?
-                walk_f, walk_b, visited_f, visited_b, sumLogProb_f, sumLogProb_b = f.result()
+                walk_f, walk_b, visited_f, visited_b, path_heuristic_value_f, path_heuristic_value_b = f.result()
                 if DEBUG:
                     print(f'Finished with candidate {e}: {k}\t' \
                         f'Time needed: {utils.timedelta_to_str(datetime.now() - start_times[e])}')         
                 walk_it = walk_b + walk_f
                 visited_iter = visited_f | visited_b
-                sumLogProb_it = sumLogProb_f.item() + sumLogProb_b.item()
+                path_heuristic_value_it = path_heuristic_value_f.item() + path_heuristic_value_b.item()
                 len_walk_it = len(walk_it)
-                len_contig_it = get_contig_length(walk_it, g).item()
+                len_contig_it = get_contig_length(walk_it, graph).item()
                 if k[0] == k[1]:
                     len_walk_it = 1
                 
                 if len_walk_it > 2:
-                    meanLogProb_it = sumLogProb_it / (len_walk_it - 2)  # len(walk_f) - 1 + len(walk_b) - 1  <-> starting edge is neglected
+                    mean_heuristic_value_it = path_heuristic_value_it / (len_walk_it - 2)  # len(walk_f) - 1 + len(walk_b) - 1  <-> starting edge is neglected
                     try:
-                        meanLogProb_scaled_it = meanLogProb_it / math.sqrt(len_contig_it)
+                        mean_heuristic_value_scaled_it = mean_heuristic_value_it / math.sqrt(len_contig_it)
                     except ValueError:
                         print(f'{indx:<3}: src={k[0]:<8} dst={k[1]:<8} len_walk={len_walk_it:<8} len_contig={len_contig_it:<12}')
                         print(f'Value error: something is wrong here!')
-                        meanLogProb_scaled_it = 0
+                        mean_heuristic_value_scaled_it = 0
                 elif len_walk_it == 2:
-                    meanLogProb_it = 0.0
+                    mean_heuristic_value_it = 0.0
                     try:
-                        meanLogProb_scaled_it = meanLogProb_it / math.sqrt(len_contig_it)
+                        mean_heuristic_value_scaled_it = mean_heuristic_value_it / math.sqrt(len_contig_it)
                     except ValueError:
                         print(f'{indx:<3}: src={k[0]:<8} dst={k[1]:<8} len_walk={len_walk_it:<8} len_contig={len_contig_it:<12}')
                         print(f'Value error: something is wrong here!')
-                        meanLogProb_scaled_it = 0
+                        mean_heuristic_value_scaled_it = 0
                 else:  # len_walk_it == 1 <-> SELF-LOOP!
                     len_contig_it = 0
-                    sumLogProb_it = 0.0
-                    meanLogProb_it = 0.0
-                    meanLogprob_scaled_it = 0.0
+                    path_heuristic_value_it = 0.0
+                    mean_heuristic_value_it = 0.0
+                    mean_heuristic_value_scaled_it = 0.0
                     print(f'SELF-LOOP!')
                 print(f'{indx:<3}: src={k[0]:<8} dst={k[1]:<8} len_walk={len_walk_it:<8} len_contig={len_contig_it:<12} ' \
-                      f'sumLogProb={sumLogProb_it:<12.3f} meanLogProb={meanLogProb_it:<12.4} meanLogProb_scaled={meanLogProb_scaled_it:<12.4}')
+                      f'path_heuristic_value={path_heuristic_value_it:<12.3f} mean_heuristic_value={mean_heuristic_value_it:<12.4} mean_heuristic_value_scaled={mean_heuristic_value_scaled_it:<12.4}')
 
                 indx += 1
                 all_walks.append(walk_it)
                 all_visited_iter.append(visited_iter)
                 all_contig_lens.append(len_contig_it)
-                all_sumLogProbs.append(sumLogProb_it)
-                all_meanLogProbs.append(meanLogProb_it)
-                all_meanLogProbs_scaled.append(meanLogProb_scaled_it)
+                all_path_heuristic_value.append(path_heuristic_value_it)
+                all_mean_heuristic_value.append(mean_heuristic_value_it)
+                all_mean_heuristic_value_scaled.append(mean_heuristic_value_scaled_it)
 
         best = max(all_contig_lens)
         idxx = all_contig_lens.index(best)
@@ -298,16 +305,16 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         best_visited = best_visited | trans
 
         best_contig_len = all_contig_lens[idxx]
-        best_sumLogProb = all_sumLogProbs[idxx]
-        best_meanLogProb = all_meanLogProbs[idxx]
-        best_meanLogProb_scaled = all_meanLogProbs_scaled[idxx]
+        best_path_heuristic_value = all_path_heuristic_value[idxx]
+        best_mean_heuristic_value = all_mean_heuristic_value[idxx]
+        best_mean_heuristic_value_scaled = all_mean_heuristic_value_scaled[idxx]
 
         elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_visited)
         print(f'Elapsed time (get visited): {elapsed}')
 
         print(f'\nChosen walk with index: {idxx}')
         print(f'len_walk={len(best_walk):<8} len_contig={best_contig_len:<12} ' \
-              f'sumLogProb={best_sumLogProb:<12.3f} meanLogProb={best_meanLogProb:<12.4} meanLogProb_scaled={best_meanLogProb_scaled:<12.4}\n')
+              f'path_heuristic_value={best_path_heuristic_value:<12.3f} mean_heuristic_value={best_mean_heuristic_value:<12.4} mean_heuristic_value_scaled={best_mean_heuristic_value_scaled:<12.4}\n')
         
         if best_contig_len < 70000:
             break
@@ -337,10 +344,10 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
     return all_contigs
 
 
-def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=None):
+def inference(data_path, model_path, assembler, savedir, strategy, parameters, device='cpu', dropout=None):
     """Using a pretrained model, get walks and contigs on new data."""
     hyperparameters = get_hyperparameters()
-    seed = hyperparameters['seed']
+    seed = parameters['seed']
     num_gnn_layers = hyperparameters['num_gnn_layers']
     hidden_features = hyperparameters['dim_latent']
     nb_pos_enc = hyperparameters['nb_pos_enc']
@@ -351,7 +358,6 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     hidden_edge_features = hyperparameters['hidden_edge_features']
     hidden_edge_scores = hyperparameters['hidden_edge_scores']
 
-    strategy = hyperparameters['strategy']
     B = hyperparameters['B']
     nb_paths = hyperparameters['num_decoding_paths']
     len_threshold = hyperparameters['len_threshold']
@@ -381,29 +387,29 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'\nelapsed time (loading network and data): {elapsed}\n')
 
-    for idx, g in ds:
+    for idx, graph in ds:
         # Get scores
         print(f'==== Processing graph {idx} ====')
         with torch.no_grad():
             time_start_get_scores = datetime.now()
-            g = g.to(device)
-            x = g.ndata['x'].to(device)
-            e = g.edata['e'].to(device)
-            pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
+            graph = graph.to(device)
+            x = graph.ndata['x'].to(device)
+            e = graph.edata['e'].to(device)
+            pe_in = graph.ndata['in_deg'].unsqueeze(1).to(device)
             pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-            pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
+            pe_out = graph.ndata['out_deg'].unsqueeze(1).to(device)
             pe_out = (pe_out - pe_out.mean()) / pe_out.std()
             pe = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
             
             if use_labels:  # Debugging
                 print('Decoding with labels...')
-                g.edata['score'] = g.edata['y'].clone()
+                graph.edata['score'] = graph.edata['y'].clone()
             else:
                 print('Decoding with model scores...')
                 predicts_path = os.path.join(inference_dir, f'{idx}_predicts.pt')
                 if os.path.isfile(predicts_path):
                     print(f'Loading the scores from:\n{predicts_path}\n')
-                    g.edata['score'] = torch.load(predicts_path)
+                    graph.edata['score'] = torch.load(predicts_path)
                 else:
                     print(f'Loading model parameters from: {model_path}')
                     model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
@@ -411,9 +417,9 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                     model.eval()
                     model.to(device)
                     print(f'Computing the scores with the model...\n')
-                    edge_predictions = model(g, x, e, pe)
-                    g.edata['score'] = edge_predictions.squeeze()
-                    torch.save(g.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
+                    edge_predictions = model(graph, x, e, pe)
+                    graph.edata['score'] = edge_predictions.squeeze()
+                    torch.save(graph.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
 
             elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_scores)
             print(f'elapsed time (get_scores): {elapsed}')
@@ -434,13 +440,9 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         time_start_get_walks = datetime.now()
         
         # Some prefixes can be <0 and that messes up the assemblies
-        g.edata['prefix_length'] = g.edata['prefix_length'].masked_fill(g.edata['prefix_length']<0, 0)
+        graph.edata['prefix_length'] = graph.edata['prefix_length'].masked_fill(graph.edata['prefix_length']<0, 0)
         
-        if strategy == 'greedy':
-            walks = get_contigs_greedy(g, succs, preds, edges, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
-        else:
-            print('Invalid decoding strategy')
-            raise Exception
+        walks = get_contigs(graph, succs, preds, edges, strategy, parameters, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
  
         elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_walks)
         print(f'elapsed time (get_walks): {elapsed}')
@@ -453,7 +455,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         print(f'Done!')
         
         time_start_get_contigs = datetime.now()
-        contigs = evaluate.walk_to_sequence(walks, g, reads, edges)
+        contigs = evaluate.walk_to_sequence(walks, graph, reads, edges)
         elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_contigs)
         print(f'elapsed time (get_contigs): {elapsed}')
 
@@ -475,14 +477,187 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     print(f'Assembly saved in: {savedir}')
 
 
+def parse_args_based_on_strategy(strategy, args):
+    """
+    Parses and returns the parameters (as a dictionary) according to the strategy specified.
+
+    Raises
+    ------
+    ValueError
+        If the strategy is invalid.
+    Exception
+        If the user-supplied values for the command flags corresponding to the parameters are invalid.
+    """
+    parameters = {}
+    exceptions = []
+
+    def validate_natural_number(value, name, include_zero):
+        """
+        Validates a natural number of a command flag. Returns the natural number if it is valid, or adds an Exception
+        and returns None if it is invalid.
+
+        Parameters
+        ----------
+        value: int
+            Value of a command flag, supplied by the user 
+        name: str
+            Name of the variable to appear in the exception message
+        include_zero: bool
+            Validates a non-negative integer if True; validates a positive integer if False
+        """
+        try:
+            int_value = int(value)
+            if include_zero:
+                if int_value < 0:
+                    raise ValueError
+            else:    
+                if int_value <= 0:
+                    raise ValueError
+        except (TypeError, ValueError):
+            if include_zero:
+                exceptions.append(Exception(f"{name} must be a non-negative integer"))
+            else:
+                exceptions.append(Exception(f"{name} must be a positive integer"))
+            return None
+        else:
+            return int_value
+        
+    def set_parameter(validated_value, key):
+        """
+        Adds a (key, value) pair to parameters if the value is valid.
+
+        Parameters
+        ----------
+        validated_value: Any
+            The value attribute of the pair. If it is invalid, it is None.
+        key: str
+            The key attribute of the pair.
+        """
+        if validated_value is not None:
+            parameters[key] = validated_value
+        
+    def validate_natural_number_and_set_parameter(value, name, key, include_zero):
+        validated_value = validate_natural_number(value, name, include_zero)
+        set_parameter(validated_value, key)
+        return validated_value
+        
+    seed = validate_natural_number_and_set_parameter(args.seed, "Seed", 'seed', include_zero=True)
+
+    if strategy == 'greedy':
+        pass
+    
+    elif strategy == 'depth_d':
+        validate_natural_number_and_set_parameter(args.depth, "Depth", key='depth', include_zero=False)
+
+    elif strategy == 'top_k':
+        validate_natural_number_and_set_parameter(args.k, "Top k", key='top_k', include_zero=False)
+
+    elif strategy == 'semi_random':
+        try:
+            random_chance = float(args.chance)
+        except (TypeError, ValueError):
+            exceptions.append(Exception("Chance must be between 0 and 1 (inclusive)"))
+        else:
+            if not 0 <= random_chance <= 1:
+                exceptions.append(Exception("Chance must be between 0 and 1 (inclusive)"))
+            else:
+                parameters['random_chance'] = random_chance
+
+    elif strategy == 'weighted_random':
+        if args.use_code_fn and args.coeffs is not None:
+            exceptions.append(Exception("use_code_fn flag cannot be used with coeffs flag"))
+        elif args.use_code_fn:
+            code_fn = PrintableFunction(get_hyperparameters()['weighted_random_function'])
+            if DEBUG:
+                print(f'Using code_fn: {code_fn}')
+            parameters['heuristic_value_to_probability'] = code_fn
+        else:
+        # for now, only polynomials (with decimal representation of coefficients) allowed!
+        # set '1,0,0,0,0' as default value
+            if args.coeffs is None:
+                args.coeffs = '1,0,0,0,0'
+            try:
+                coeffs = list(map(float, args.coeffs.split(',')))
+            except (AttributeError, TypeError, ValueError):
+                exceptions.append(Exception("Coefficients must be a stream of numbers, separated by commas"))
+            else:
+                if coeffs[0] == 0:
+                    warnings.warn("Leading coefficient is 0")
+                if not any(coeffs):
+                    exceptions.append(Exception("Coefficients cannot all be 0"))
+                else:
+                    coeffs.reverse()
+                    f = PrintablePolynomial(coeffs)
+                    if DEBUG:
+                        print(f'The coefficients are: {coeffs}')
+                        print(f'The polynomial is: f(x) = {str(f)}')
+                    parameters['heuristic_value_to_probability'] = f
+
+    elif strategy == 'random_search':
+        polynomial_degree = validate_natural_number(args.deg, "Degree", include_zero=False)
+        precision_in_decimal_places = validate_natural_number(args.dp, "Number of decimal places", include_zero=True)
+        if not exceptions:
+            utils.set_seed(seed)
+            coeffs = []
+            for _ in range(polynomial_degree + 1):
+                coeff = random.uniform(0, 1)
+                coeff = round(coeff, precision_in_decimal_places)
+                coeffs.append(coeff)
+            coeffs[0] = 0
+            if DEBUG:
+                parameters = {'seed': seed, 'degree': polynomial_degree, 'decimal_places': precision_in_decimal_places}
+                print(f'The parameters are: {parameters}')
+                print(f'The coefficients are: {coeffs}')
+            f = PrintablePolynomial(coeffs)
+            parameters['heuristic_value_to_probability'] = f
+
+    elif strategy == 'beam':
+        top_b = validate_natural_number_and_set_parameter(args.b, "Top b", key='top_b', include_zero=False)
+        top_w = validate_natural_number_and_set_parameter(args.w, "Top w", key='top_w', include_zero=False)
+        if not (top_b is None or top_w is None) and top_w < top_b:
+            warnings.warn("Top w is smaller than top b. Effectively, top b is equal to top w.")
+        try:
+            option = int(args.opt)
+            if option not in {1, 2, 3}:
+                ValueError
+        except (TypeError, ValueError):
+            exceptions.append(Exception("Option must be 1, 2 or 3"))
+        else:
+            parameters['option'] = option
+
+    else:
+        raise ValueError('Unknown strategy. Aborting decoding process...')
+    
+    if exceptions:
+        exception_message = "\n".join(str(exception) for exception in exceptions)
+        raise Exception(exception_message)
+    return parameters
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, help='Path to the dataset')
     parser.add_argument('--asm', type=str, help='Assembler used')
     parser.add_argument('--out', type=str, help='Output directory')
     parser.add_argument('--model', type=str, default=None, help='Path to the model')
+    parser.add_argument('--seed', type=str, default=get_hyperparameters()['seed'], help='Seed used for random processes')
+    parser.add_argument('--strat', type=str, default='greedy', help='Strategy used in decoding')
+    parser.add_argument('--depth', type=str, default=2, help='Depth of path search')
+    parser.add_argument('--k', type=str, default=3, help='Top k edges to select randomly from')
+    parser.add_argument('--chance', type=str, default=0.125, help='Probability of selecting random edge')
+    # default value is actually '1,0,0,0,0', None is just a sentinel value
+    parser.add_argument('--coeffs', type=str, default=None, help='Coefficients of polynomial, starting from highest power, separated by commas')
+    parser.add_argument('--use_code_fn', action='store_true', default=False, help='Uses the function f specified in hyperparameters, instead of user-specified polynomial')
+    parser.add_argument('--deg', type=str, default=4, help='Degree of polynomial')
+    parser.add_argument('--dp', type=str, default=1, help='Number of decimal places in which coefficients are rounded off to')
+    parser.add_argument('--b', type=str, default=2, help='Top b edges to select')
+    parser.add_argument('--w', type=str, default=2, help='Top w walks to keep')
+    parser.add_argument('--opt', type=str, default=2, help='Option to keep walks by')
+    parser.add_argument('--hf', type=str, help='Heuristic function of an edge')
+    parser.add_argument('--hr', type=str, help='Reduce function that aggregates the heuristic values')
     args = parser.parse_args()
-
+    strat = args.strat
+    params = parse_args_based_on_strategy(strat, args)
     data = args.data
     asm = args.asm
     out = args.out
@@ -490,4 +665,4 @@ if __name__ == '__main__':
     if not model:
         model = 'weights/weights.pt'
 
-    inference(data_path=data, assembler=asm, model_path=model, savedir=out)
+    inference(data_path=data, assembler=asm, model_path=model, savedir=out, strategy=strat, parameters=params)

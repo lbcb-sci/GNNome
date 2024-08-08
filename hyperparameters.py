@@ -1,3 +1,4 @@
+import math
 import torch
 
 def get_hyperparameters():
@@ -52,5 +53,9 @@ def get_hyperparameters():
         'num_threads': 32,
         'B': 1,
         'len_threshold': 10,
+        'heuristic_function': lambda prob, length: math.log(prob),
+        'heuristic_reduce_function': lambda curr, new: curr + new,
+        'initial_heuristic_value': 0.0,
+        'weighted_random_function': lambda prob: -torch.sqrt(1 - prob ** 2) + 1,
     }
 
