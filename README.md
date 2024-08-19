@@ -113,11 +113,32 @@ The directories `assembly`, `decode`, and `checkpoint` will be created inside `e
 
 ## Usage
 
+
+### Easy way
+If you want to just provide the reads and assemble the genome following the recommended pipeline (using hifiasm to build the assembly graph and the default model to untangle it), you can use the following command:
+```bash
+python run.py -r <reads> -o <out>
+  -r <reads>
+    input file in FASTA/FASTQ format (can be compressed with gzip)
+  -o <out>
+    path to where the processed data will be saved
+
+  Optional:
+  -t <threads>
+    number of threads used for running the assembler (default: 1)
+  -m <model>
+    path to the model used for decoding (deafult: weights/weights.pt)
+```
+
+This will save the assembly to the path `<out>/hifiasm/assembly/0_assembly.fasta`. If you want more flexibility, e.g., where the data will be saved or which assembler you want to use, see the step-by-step instructions below.
+
+### Step-by-step inference
+
 To run the model on a new genome, first you need to run another assembler which can output a non-reduced graph in a GFA format.
 Note: this tool has been optimized for haploid assembly, and this tutorial mainly focuses on this.
 
 
-### Construct the assembly graphs from HiFi sequences
+#### Construct the assembly graphs from HiFi sequences
 For HiFi data, we recommend using [hifiasm](https://github.com/chhylp123/hifiasm).
 
 Run hifiasm with the following command:
@@ -126,7 +147,7 @@ Run hifiasm with the following command:
 ```
 where `<reads>` is the path to the sequences in FASTA/FASTQ format, and `<out>` is the prefix for the output files. The GFA graph can then be found in the current directory under the name `<out>.bp.raw.r_utg.gfa`.
 
-### Construct the assembly graphs from ONT sequences
+#### Construct the assembly graphs from ONT sequences
 For ONT data, we recommend using [Raven](https://github.com/lbcb-sci/raven).
 
 Run Raven with the following command:
@@ -137,7 +158,7 @@ where `<reads>` is the path to the sequences in FASTA/FASTQ format.
 The graph can then be found in the current directory under the name `graph_1.gfa`.
 
 
-### Process the assembly graphs
+#### Process the assembly graphs
 
 From the reads in FASTA/Q format and the graph in the GFA format, we can produce the graph in the DGL format and auxiliary data:
 ```bash
@@ -155,7 +176,7 @@ python create_inference_graphs.py --reads <reads> --gfa <gfa> --asm <asm> --out 
 The resulting data can be found in the `<out>/<asm>/processed/` and `<out>/<asm>/info/` directories.
 
 
-### Generating the assembly
+#### Generating the assembly
 ```bash
 python inference.py --data <data> --asm <asm> --out <out>
 
