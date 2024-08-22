@@ -58,13 +58,22 @@ def extract_contigs(path, idx):
 def preprocess_graph(g):
     g = g.int()
     g.ndata['x'] = torch.ones(g.num_nodes(), 1)
-    ol_len = g.edata['overlap_length'].float()
-    ol_sim = g.edata['overlap_similarity']
-    ol_len = (ol_len - ol_len.mean()) / ol_len.std()
-    if get_hyperparameters()['use_similarities']:
-        g.edata['e'] = torch.cat((ol_len.unsqueeze(-1), ol_sim.unsqueeze(-1)), dim=1)
+    if len(set(g.ntypes)) == 1 and len(set(g.etypes)) == 1:
+        ol_len = g.edata['overlap_length'].float()
+        ol_sim = g.edata['overlap_similarity']
+        ol_len = (ol_len - ol_len.mean()) / ol_len.std()
+        if get_hyperparameters()['use_similarities']:
+            g.edata['e'] = torch.cat((ol_len.unsqueeze(-1), ol_sim.unsqueeze(-1)), dim=1)
+        else:
+            g.edata['e'] = ol_len.unsqueeze(-1)
     else:
-        g.edata['e'] = ol_len.unsqueeze(-1)
+        ol_len = g.edges['real'].data['overlap_length'].float()
+        ol_sim = g.edges['real'].data['overlap_similarity']
+        ol_len = (ol_len - ol_len.mean()) / ol_len.std()
+        if get_hyperparameters()['use_similarities']:
+            g.edges['real'].data['e'] = torch.cat((ol_len.unsqueeze(-1), ol_sim.unsqueeze(-1)), dim=1)
+        else:
+            g.edges['real'].data['e'] = ol_len.unsqueeze(-1)
     return g
 
 
@@ -72,10 +81,12 @@ def add_positional_encoding(g):
     """
         Initializing positional encoding with k-RW-PE
     """
-
-    g.ndata['in_deg'] = g.in_degrees().float()
-    g.ndata['out_deg'] = g.out_degrees().float()
-    
+    if len(set(g.ntypes)) == 1 and len(set(g.etypes)) == 1:
+        g.ndata['in_deg'] = g.in_degrees().float()
+        g.ndata['out_deg'] = g.out_degrees().float()
+    else:
+        g.ndata['in_deg'] = g.in_degrees(etype='real').float()
+        g.ndata['out_deg'] = g.out_degrees(etype='real').float()
     pe_dim = get_hyperparameters()['nb_pos_enc']
     pe_type = get_hyperparameters()['type_pos_enc']
     

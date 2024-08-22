@@ -33,6 +33,30 @@ class SymGatedGCNModel(nn.Module):
         scores = self.predictor(graph, x, e)
         return scores
 
+class SymGatedGCNModel_hetero(nn.Module):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None):
+        super().__init__()
+        hidden_node_features = hidden_edge_features
+        self.linear1_node = nn.Linear(node_features, hidden_node_features)
+        self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
+        self.linear1_edge = nn.Linear(edge_features, hidden_edge_features) 
+        self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features) 
+        self.gnn = layers.SymGatedGCN_processor_hetero(num_layers, hidden_features, batch_norm, dropout=dropout)
+        self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
+
+    def forward(self, graph, x, e, pe):
+        # x = self.linear_pe(pe) 
+        x = self.linear1_node(pe)
+        x = torch.relu(x)
+        x = self.linear2_node(x)
+
+        e = self.linear1_edge(e)
+        e = torch.relu(e)
+        e = self.linear2_edge(e)
+        
+        x, e = self.gnn(graph, x, e)
+        scores = self.predictor(graph, x, e)
+        return scores
 
 class GatedGCNModel(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None, directed=True):

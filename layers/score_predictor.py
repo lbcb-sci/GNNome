@@ -19,7 +19,12 @@ class ScorePredictor(nn.Module):
     def forward(self, graph, x, e):
         with graph.local_scope():
             graph.ndata['x'] = x
-            graph.edata['e'] = e
-            graph.apply_edges(self.apply_edges)
-            return graph.edata['score']
+            if len(set(graph.ntypes)) == 1 and len(set(graph.etypes)) == 1:
+                graph.edata['e'] = e
+                graph.apply_edges(self.apply_edges)
+                return graph.edata['score']
+            else:
+                graph.edges['real'].data['e'] = e
+                graph.apply_edges(self.apply_edges, etype='real')
+                return graph.edges['real'].data['score']
 

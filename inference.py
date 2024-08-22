@@ -25,12 +25,59 @@ import utils
 DEBUG = False
 RANDOM = False
 
+def connectComplement_new(g):
+    num_added_edges = int(g.num_nodes()/2)
+    d = {'overlap_similarity': torch.ones(num_added_edges, dtype=torch.float32),
+             'e': torch.tensor(num_added_edges*[[0,0]], dtype=torch.float32),
+             'overlap_length': torch.tensor(num_added_edges*[-1], dtype=torch.int64),
+             'prefix_length': torch.tensor(num_added_edges*[-1], dtype=torch.int64)}
+    src = torch.arange(0, g.num_nodes(), 2).to(torch.int32)
+    dst = torch.arange(1, g.num_nodes(), 2).to(torch.int32)
+    g.add_edges(src, dst, d)
+    g.add_edges(dst, src, d)
+
+def connectComplement_hetero(input):
+    dict = {('read', 'real', 'read'):((input.edges()[0].to(torch.int64), input.edges()[1].to(torch.int64))),
+            ('read', 'virtual', 'read'): (torch.cat((torch.tensor(range(0, input.num_nodes(), 2)),
+                                                    torch.tensor(range(1, input.num_nodes(), 2)))).to(torch.int64),
+                                          torch.cat((torch.tensor(range(1, input.num_nodes(), 2)),
+                                                    torch.tensor(range(0, input.num_nodes(), 2)))).to(torch.int64))}
+    out = dgl.heterograph(dict)
+    out.ndata['read_length'] = input.ndata['read_length']
+    out.ndata['x'] = input.ndata['x']
+    out.ndata['in_deg'] = input.ndata['in_deg']
+    out.ndata['out_deg'] = input.ndata['out_deg']
+    out.edata['overlap_similarity'] = {
+        'real': input.edata['overlap_similarity'],
+        'virtual': torch.ones(out.num_edges('virtual'), dtype=torch.float32)
+        }
+    out.edata['overlap_length'] = {
+        'real': input.edata['overlap_length'],
+        'virtual': torch.neg(torch.ones(out.num_edges('virtual'), dtype=torch.int64))
+        }
+    out.edata['prefix_length'] = {
+        'real': input.edata['prefix_length'],
+        'virtual': torch.neg(torch.ones(out.num_edges('virtual'), dtype=torch.int64))
+        }
+    out.edata['e'] = {
+        'real': input.edata['e'],
+        'virtual': torch.zeros(out.num_edges('virtual'), dtype=torch.float32)
+        }
+    d = {'overlap_similarity': torch.tensor([1], dtype=torch.float32),
+        'overlap_length': torch.tensor([-1], dtype=torch.int64),
+        'prefix_length': torch.tensor([-1], dtype=torch.int64),
+        'e': torch.tensor([0], dtype=torch.float32)}
+    #out = dgl.add_edges(out, torch.arange(1, input.num_nodes(), 2).to(torch.int32), torch.arange(0, input.num_nodes(), 2).to(torch.int32), d, ('read', 'virtual', 'read'))
+    return out
 
 def get_contig_length(walk, graph):
     total_length = 0
     idx_src = walk[:-1]
     idx_dst = walk[1:]
-    prefix = graph.edges[idx_src, idx_dst].data['prefix_length']
+    if len(set(graph.ntypes)) == 1 and len(set(graph.etypes)) == 1:
+        prefix = graph.edges[idx_src, idx_dst].data['prefix_length']
+    else:
+        prefix = graph.edges['real'].data['prefix_length'][graph.edge_ids(idx_src, idx_dst, etype='real')]
     total_length = prefix.sum().item()
     total_length += graph.ndata['read_length'][walk[-1]]
     return total_length
@@ -42,8 +89,8 @@ def get_subgraph(g, visited, device):
     list_node_idx = torch.arange(g.num_nodes())
     keep_node_idx = torch.ones(g.num_nodes())
     keep_node_idx[remove_node_idx] = 0
-    keep_node_idx = list_node_idx[keep_node_idx==1].int().to(device)
-
+    keep_node_idx = list_node_idx[keep_node_idx==1].to(torch.int64).to(device)
+    g = g.long()
     sub_g = dgl.node_subgraph(g, keep_node_idx, store_ids=True)
     sub_g.ndata['idx_nodes'] = torch.arange(sub_g.num_nodes()).to(device)
     map_subg_to_g = sub_g.ndata[dgl.NID]
@@ -166,13 +213,22 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
 
     B = 1
 
-    if use_labels:
-        scores = g.edata['y'].to('cpu')
-        scores = scores.masked_fill(scores<1e-9, 1e-9)
-        logProbs = torch.log(scores)
+    if len(set(g.ntypes)) == 1 and len(set(g.etypes)) == 1:
+        if use_labels:
+            scores = g.edata['y'].to('cpu')
+            scores = scores.masked_fill(scores<1e-9, 1e-9)
+            logProbs = torch.log(scores)
+        else:
+            scores = g.edata['score'].to('cpu')
+            logProbs = torch.log(torch.sigmoid(g.edata['score'].to('cpu')))
     else:
-        scores = g.edata['score'].to('cpu')
-        logProbs = torch.log(torch.sigmoid(g.edata['score'].to('cpu')))
+        if use_labels:
+            scores = g.edges['real'].data['y'].to('cpu')
+            scores = scores.masked_fill(scores<1e-9, 1e-9)
+            logProbs = torch.log(scores)
+        else:
+            scores = g.edges['real'].data['score'].to('cpu')
+            logProbs = torch.log(torch.sigmoid(g.edges['real'].data['score'].to('cpu')))
 
     print(f'Starting to decode with greedy...')
     print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
@@ -194,10 +250,16 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         if sub_g.num_edges() == 0:
             break
         
-        if use_labels:  # Debugging
-            prob_edges = sub_g.edata['y']
+        if len(set(sub_g.ntypes)) == 1 and len(set(sub_g.etypes)) == 1:
+            if use_labels:  # Debugging
+                prob_edges = sub_g.edata['y']
+            else:
+                prob_edges = torch.sigmoid(sub_g.edata['score']).squeeze()
         else:
-            prob_edges = torch.sigmoid(sub_g.edata['score']).squeeze()
+            if use_labels:  # Debugging
+                prob_edges = sub_g.edges['real'].data['y']
+            else:
+                prob_edges = torch.sigmoid(sub_g.edges['real'].data['score']).squeeze()
 
         idx_edges = sample_edges(prob_edges, nb_paths)
 
@@ -224,15 +286,24 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
                 all_cand_time = datetime.now()
             results = {}
             start_times = {}
-            for e, idx in enumerate(idx_edges):
-                src_init_edges = map_subg_to_g[sub_g.edges()[0][idx]].item()
-                dst_init_edges = map_subg_to_g[sub_g.edges()[1][idx]].item()
-                start_times[e] = datetime.now()
-                if DEBUG:
-                    print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
-                future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, logProbs, succs, preds, edges, visited)
-                results[(src_init_edges, dst_init_edges)] = (future, e)
-
+            if len(set(sub_g.ntypes)) == 1 and len(set(sub_g.etypes)) == 1:
+                for e, idx in enumerate(idx_edges):
+                    src_init_edges = map_subg_to_g[sub_g.edges()[0][idx]].item()
+                    dst_init_edges = map_subg_to_g[sub_g.edges()[1][idx]].item()
+                    start_times[e] = datetime.now()
+                    if DEBUG:
+                        print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
+                    future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, logProbs, succs, preds, edges, visited)
+                    results[(src_init_edges, dst_init_edges)] = (future, e)
+            else:
+                for e, idx in enumerate(idx_edges):
+                    src_init_edges = map_subg_to_g[sub_g.edges(etype='real')[0][idx]].item()
+                    dst_init_edges = map_subg_to_g[sub_g.edges(etype='real')[1][idx]].item()
+                    start_times[e] = datetime.now()
+                    if DEBUG:
+                        print(f'About to submit job - decoding from edge {e}: {src_init_edges, dst_init_edges}', flush=True)
+                    future = executor.submit(run_greedy_both_ways, src_init_edges, dst_init_edges, logProbs, succs, preds, edges, visited)
+                    results[(src_init_edges, dst_init_edges)] = (future, e)
             if DEBUG:
                 process = psutil.Process(os.getpid())
                 children = process.children(recursive=True)
@@ -351,7 +422,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
     return all_contigs
 
 
-def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=None):
+def inference(data_path, model_path, assembler, savedir, graph_type, device='cpu', dropout=None):
     """Using a pretrained model, get walks and contigs on new data."""
     hyperparameters = get_hyperparameters()
     seed = hyperparameters['seed']
@@ -396,42 +467,82 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
 
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'\nelapsed time (loading network and data): {elapsed}\n')
-
+    
     for idx, g in ds:
-        # Get scores
-        print(f'==== Processing graph {idx} ====')
-        with torch.no_grad():
-            time_start_get_scores = datetime.now()
-            g = g.to(device)
-            x = g.ndata['x'].to(device)
-            e = g.edata['e'].to(device)
-            pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
-            pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-            pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
-            pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-            pe = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
-            
-            if use_labels:  # Debugging
-                print('Decoding with labels...')
-                g.edata['score'] = g.edata['y'].clone()
-            else:
-                print('Decoding with model scores...')
-                predicts_path = os.path.join(inference_dir, f'{idx}_predicts.pt')
-                if os.path.isfile(predicts_path):
-                    print(f'Loading the scores from:\n{predicts_path}\n')
-                    g.edata['score'] = torch.load(predicts_path)
-                elif RANDOM:
-                    g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
+        if graph_type == 'homo':
+            # Get scores
+            connectComplement_new(g)
+            print(f'==== Processing graph {idx} ====')
+            with torch.no_grad():
+                time_start_get_scores = datetime.now()
+                g = g.to(device)
+                x = g.ndata['x'].to(device)
+                e = g.edata['e'].to(device)
+                pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
+                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
+                pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
+                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
+                pe = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
+                
+                if use_labels:  # Debugging
+                    print('Decoding with labels...')
+                    g.edata['score'] = g.edata['y'].clone()
                 else:
-                    print(f'Loading model parameters from: {model_path}')
-                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
-                    model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
-                    model.eval()
-                    model.to(device)
-                    print(f'Computing the scores with the model...\n')
-                    edge_predictions = model(g, x, e, pe)
-                    g.edata['score'] = edge_predictions.squeeze()
-                    torch.save(g.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
+                    print('Decoding with model scores...')
+                    predicts_path = os.path.join(inference_dir, f'{idx}_predicts.pt')
+                    if os.path.isfile(predicts_path):
+                        print(f'Loading the scores from:\n{predicts_path}\n')
+                        g.edata['score'] = torch.load(predicts_path)
+                    elif RANDOM:
+                        g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
+                    else:
+                        print(f'Loading model parameters from: {model_path}')
+                        model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
+                        model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
+                        model.eval()
+                        model.to(device)
+                        print(f'Computing the scores with the model...\n')
+                        edge_predictions = model(g, x, e, pe)
+                        g.edata['score'] = edge_predictions.squeeze()
+                        torch.save(g.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
+                        g = g.edge_subgraph(g.filter_edges(lambda edges: edges.data['prefix_length'] != -1).to(torch.int32), relabel_nodes=False)
+        if graph_type == 'hetero':
+            # Get scores
+            g = connectComplement_hetero(g)
+            print(f'==== Processing graph {idx} ====')
+            with torch.no_grad():
+                time_start_get_scores = datetime.now()
+                g = g.to(device)
+                x = g.ndata['x'].to(device)
+                e = g.edges['real'].data['e'].to(device)
+                pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
+                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
+                pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
+                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
+                pe = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
+                
+                if use_labels:  # Debugging
+                    print('Decoding with labels...')
+                    g.edges['real'].data['score'] = g.edges['real'].data['y'].clone()
+                else:
+                    print('Decoding with model scores...')
+                    predicts_path = os.path.join(inference_dir, f'{idx}_predicts.pt')
+                    if os.path.isfile(predicts_path):
+                        print(f'Loading the scores from:\n{predicts_path}\n')
+                        g.edges['real'].data['score'] = torch.load(predicts_path)
+                    elif RANDOM:
+                        g.edges['real'].data['score'] = torch.ones_like(g.edges['real'].data['prefix_length']) * 10
+                    else:
+                        print(f'Loading model parameters from: {model_path}')
+                        model = models.SymGatedGCNModel_hetero(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
+                        model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
+                        model.eval()
+                        model.to(device)
+                        print(f'Computing the scores with the model...\n')
+                        edge_predictions = model(g, x, e, pe)  # forward-pass
+                        g.edges['real'].data['score'] = edge_predictions.squeeze()
+                        torch.save(g.edges['real'].data['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
+                        g = g.edge_subgraph({('read', 'real', 'read'): g.edges(form='eid', etype='real')}, relabel_nodes=False)
 
             elapsed = utils.timedelta_to_str(datetime.now() - time_start_get_scores)
             print(f'elapsed time (get_scores): {elapsed}')
@@ -444,6 +555,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         with open(f'{data_path}/{assembler}/info/{idx}_pred.pkl', 'rb') as f_preds:
             preds = pickle.load(f_preds)
         print(f'Loading edges...')
+
         with open(f'{data_path}/{assembler}/info/{idx}_edges.pkl', 'rb') as f_edges:
             edges = pickle.load(f_edges)
         print(f'Done loading the auxiliary graph data!')
@@ -452,8 +564,10 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         time_start_get_walks = datetime.now()
         
         # Some prefixes can be <0 and that messes up the assemblies
-        g.edata['prefix_length'] = g.edata['prefix_length'].masked_fill(g.edata['prefix_length']<0, 0)
-        
+        if graph_type == 'homo':
+            g.edata['prefix_length'] = g.edata['prefix_length'].masked_fill(g.edata['prefix_length']<0, 0)
+        if graph_type == 'hetero':
+            g.edges['real'].data['prefix_length'] = g.edges['real'].data['prefix_length'].masked_fill(g.edges['real'].data['prefix_length']<0, 0)
         if strategy == 'greedy':
             walks = get_contigs_greedy(g, succs, preds, edges, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
         else:
@@ -499,13 +613,15 @@ if __name__ == '__main__':
     parser.add_argument('--asm', type=str, help='Assembler used')
     parser.add_argument('--out', type=str, help='Output directory')
     parser.add_argument('--model', type=str, default=None, help='Path to the model')
+    parser.add_argument('--gtype', type=str, default=None, help='DGL graph type')
     args = parser.parse_args()
 
     data = args.data
     asm = args.asm
     out = args.out
     model = args.model
+    gtype = args.gtype
     if not model:
         model = 'weights/weights.pt'
 
-    inference(data_path=data, assembler=asm, model_path=model, savedir=out)
+    inference(data_path=data, assembler=asm, model_path=model, savedir=out, graph_type=gtype)

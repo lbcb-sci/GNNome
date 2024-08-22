@@ -38,7 +38,14 @@ chr_lens = {
 def walk_to_sequence(walks, graph, reads, edges):
     contigs = []
     for i, walk in enumerate(walks):
-        prefixes = [(src, graph.edata['prefix_length'][edges[src,dst]]) for src, dst in zip(walk[:-1], walk[1:])]
+        if len(set(graph.ntypes)) == 1 and len(set(graph.etypes)) == 1:
+            try:
+                prefixes = [(src, graph.edata['prefix_length'][edges[src,dst]]) for src, dst in zip(walk[:-1], walk[1:])]
+            except KeyError as e:
+                print(i)
+                print(repr(e))
+        else:
+            prefixes = [(src, graph.edges['real'].data['prefix_length'][edges[src,dst]]) for src, dst in zip(walk[:-1], walk[1:])]           
         sequences = [reads[src][:prefix] for (src, prefix) in prefixes]
         contig = Seq.Seq(''.join(sequences) + reads[walk[-1]])  # TODO: why is this map here? Maybe I can remove it if I work with strings
         contig = SeqIO.SeqRecord(contig)
