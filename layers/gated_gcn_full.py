@@ -37,8 +37,15 @@ class SymGatedGCN(nn.Module):
         self.B_2 = nn.Linear(in_channels, out_channels, dtype=dtype)
         self.B_3 = nn.Linear(in_channels, out_channels, dtype=dtype)
 
+        # Linear Projection
         # self.C = nn.Linear(in_channels, out_channels, dtype=dtype)
+
+        # Multi-layer Linear Projection
+        # self.C_1 = nn.Linear(in_channels, out_channels, dtype=dtype)
         # self.C_2 = nn.Linear(in_channels, out_channels, dtype=dtype)
+
+        # Matrix addition
+        # self.C = nn.Linear(in_channels, out_channels, dtype=dtype)
 
         if batch_norm: # batch normalization
             self.bn_h = nn.BatchNorm1d(out_channels, track_running_stats=True)
@@ -159,12 +166,15 @@ class SymGatedGCN(nn.Module):
                 g.ndata['B2h'] = self.B_2(h)
                 g.edges['real'].data['B3e'] = self.B_3(e)
 
-                # g.ndata['C1h'] = self.C(h)
-                
+                # Linear projection
+                # g.ndata['Ch'] = self.C(h)
+
+                # Multi-layer linear Projection
                 # g.ndata['C1h'] = F.relu(self.C_1(h))
                 # g.ndata['C2h'] = self.C_2(g.ndata['C1h'])
-
-                # g.ndata['C1h'] = self.C_1(h + g.ndata['A1h'])
+                
+                # Matrix addition
+                # g.ndata['Ch'] = self.C(h + g.ndata['A1h'])
 
                 g_reverse = dgl.reverse(g, copy_ndata=True, copy_edata=True)
 
@@ -181,9 +191,20 @@ class SymGatedGCN(nn.Module):
                 g.edges['real'].data['sigma_f'] = torch.sigmoid(g.edges['real'].data['e_ji'])
                 g.update_all(fn.u_mul_e('A2h', 'sigma_f', 'm_f'), fn.sum('m_f', 'sum_sigma_h_f'), etype='real')
                 g.update_all(fn.copy_e('sigma_f', 'm_f'), fn.sum('m_f', 'sum_sigma_f'), etype='real')
+                
+                # Simple addition
                 # g.update_all(fn.copy_u('h', 'v'), fn.sum('v', 'virtual'), etype='virtual')
+                
+                # Linear projection
+                # g.update_all(fn.copy_u('Ch', 'v'), fn.sum('v', 'virtual'), etype='virtual')
+
+                # Multi-layer linear Projection
                 # g.update_all(fn.copy_u('C1h', 'v'), fn.sum('v', 'virtual'), etype='virtual')
                 # g.update_all(fn.copy_u('C2h', 'v'), fn.sum('v', 'virtual'), etype='virtual')
+
+                # Matrix addition
+                # g.update_all(fn.copy_u('Ch', 'v'), fn.sum('v', 'virtual'), etype='virtual')
+
                 g.ndata['h_forward'] = g.ndata['sum_sigma_h_f'] / (g.ndata['sum_sigma_f'] + 1e-6)
 
                 # Backward-message passing
@@ -198,6 +219,7 @@ class SymGatedGCN(nn.Module):
                 g_reverse.update_all(fn.u_mul_e('A3h', 'sigma_b', 'm_b'), fn.sum('m_b', 'sum_sigma_h_b'), etype='real')
                 g_reverse.update_all(fn.copy_e('sigma_b', 'm_b'), fn.sum('m_b', 'sum_sigma_b'), etype='real')
                 g_reverse.ndata['h_backward'] = g_reverse.ndata['sum_sigma_h_b'] / (g_reverse.ndata['sum_sigma_b'] + 1e-6)
+                # Add "+ g.ndata['virtual']" for virtual edge message passing methods
                 h = g.ndata['A1h'] + g.ndata['h_forward'] + g_reverse.ndata['h_backward'] # + g.ndata['virtual']
 
                 h = self.bn_h(h)
