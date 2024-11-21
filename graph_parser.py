@@ -211,15 +211,22 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
 
                 if training:
 
-                    if type(id) != list:
+                    if type(id) != list:  # TODO: OBSOLETE - see if you can remove it
                         description = read_headers[id]
                         # desc_id, strand, start, end = description.split()
                         strand = re.findall(r'strand=(\+|\-)', description)[0]
                         strand = 1 if strand == '+' else -1
                         start = int(re.findall(r'start=(\d+)', description)[0])  # untrimmed
                         end = int(re.findall(r'end=(\d+)', description)[0])  # untrimmed
-                        chromosome = int(re.findall(r'chr=(\d+)', description)[0])
-
+                        chromosome = re.findall(r'chr=([0-9XYM]+)', description)[0]
+                        if chromosome == 'X':
+                            chromosome = -1
+                        elif chromosome == 'Y':
+                            chromosome = -2
+                        elif chromosome == 'M':
+                            chromosome = -3
+                        else:
+                            chromosome = int(chromosome)
                     else:
                         strands = []
                         starts = []
@@ -238,7 +245,15 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                             starts.append(start)
                             end = int(re.findall(r'end=(\d+)', description)[0])  # untrimmed
                             ends.append(end)
-                            chromosome = int(re.findall(r'chr=(\d+)', description)[0])
+                            chromosome = re.findall(r'chr=([0-9XYM]+)', description)[0]
+                            if chromosome == 'X':
+                                chromosome = -1
+                            elif chromosome == 'Y':
+                                chromosome = -2
+                            elif chromosome == 'M':
+                                chromosome = -3
+                            else:
+                                chromosome = int(chromosome)  # Needed for adding these values as node features in DGL graph (useful for debugging, but not essential)
                             chromosomes.append(chromosome)
 
                         # What if they come from different strands but are all merged in a single unitig?
