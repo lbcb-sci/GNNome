@@ -51,6 +51,30 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
                 elif chrN_flag.endswith('_hg002'):
                     chrN = chrN_flag[:-6]
                     chr_sim_path = os.path.join(hg002_path, chrN, assembler)
+                elif chrN_flag.endswith('_bonobo'):
+                    ape_path = os.path.join(hg002_path, '..', 'bonobo_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                elif chrN_flag.endswith('_chimp'):
+                    ape_path = os.path.join(hg002_path, '..', 'chimpanzee_pbsim_60x')
+                    chrN = chrN_flag[:-6]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                elif chrN_flag.endswith('_gorilla'):
+                    ape_path = os.path.join(hg002_path, '..', 'gorilla_pbsim_60x')
+                    chrN = chrN_flag[:-8]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                elif chrN_flag.endswith('_orangb'):
+                    ape_path = os.path.join(hg002_path, '..', 'orangutan_borneo_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                elif chrN_flag.endswith('_orangs'):
+                    ape_path = os.path.join(hg002_path, '..', 'orangutan_sumatra_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                elif chrN_flag.endswith('_siamang'):
+                    ape_path = os.path.join(hg002_path, '..', 'siamang_pbsim_60x')
+                    chrN = chrN_flag[:-8]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
                 else:
                     print(f'Give proper suffix!')
                     raise Exception
@@ -82,6 +106,36 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
                 elif chrN_flag.endswith('_hg002'):
                     chrN = chrN_flag[:-6]
                     chr_sim_path = os.path.join(hg002_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_bonobo'):
+                    ape_path = os.path.join(hg002_path, '..', 'bonobo_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_chimp'):
+                    ape_path = os.path.join(hg002_path, '..', 'chimpanzee_pbsim_60x')
+                    chrN = chrN_flag[:-6]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_gorilla'):
+                    ape_path = os.path.join(hg002_path, '..', 'gorilla_pbsim_60x')
+                    chrN = chrN_flag[:-8]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_orangb'):
+                    ape_path = os.path.join(hg002_path, '..', 'orangutan_borneo_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_orangs'):
+                    ape_path = os.path.join(hg002_path, '..', 'orangutan_sumatra_pbsim_60x')
+                    chrN = chrN_flag[:-7]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_siamang'):
+                    ape_path = os.path.join(hg002_path, '..', 'siamang_pbsim_60x')
+                    chrN = chrN_flag[:-8]
+                    chr_sim_path = os.path.join(ape_path, chrN, assembler)
                     j = i + train_dict.get(chrN_flag, 0)
                 else:
                     print(f'Give proper suffix!')
