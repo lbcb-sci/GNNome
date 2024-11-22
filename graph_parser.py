@@ -158,13 +158,10 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
             line_idx += 1
             line = line.strip().split()
             if line[0] == 'S':
-                if len(line) == 5:  # Hifiasm
-                    tag, id, sequence, length, count = line
-                if len(line) == 4:  # Raven
-                    tag, id, sequence, length = line
+                tag, id, sequence, length = line[:4]
                 if sequence == '*':
                     no_seqs_flag = True
-                    sequence = '*' * int(length[5:])
+                    sequence = '*'
                 sequence = Seq(sequence)  # This sequence is already trimmed in raven!
                 length = int(length[5:])
 
