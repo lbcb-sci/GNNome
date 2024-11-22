@@ -105,7 +105,13 @@ def calculate_similarities(edge_ids, read_seqs, overlap_lengths):
         read_src = read_seqs[src]
         read_dst = read_seqs[dst]
         edit_distance = edlib.align(read_src[-ol_length:], read_dst[:ol_length])['editDistance']
-        overlap_similarities[(src, dst)] = 1 - edit_distance / ol_length
+        try:
+            overlap_similarities[(src, dst)] = 1 - edit_distance / ol_length
+        except ZeroDivisionError:
+            print(f'Zero division error occurs for reads: {src}\t{dst}')
+            print(f'Their edit distance is: {edit_distance}')
+            print(f'Overlap length (expected zero): {ol_length}')
+            raise
     return overlap_similarities
 
 
@@ -224,6 +230,14 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 else:
                     raise Exception("Unknown GFA format!")
 
+                try:
+                    ol_length = int(cigar[:-1])  # Assumption: this is overlap length and not a CIGAR string
+                except ValueError:
+                    print('Cannot convert CIGAR string into overlap length!')
+                    raise ValueError
+                if ol_length == 0:
+                    continue
+
                 if orient1 == '+' and orient2 == '+':
                     src_real = read_to_node[id1][0]
                     dst_real = read_to_node[id2][0]
@@ -259,12 +273,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 # Sometimes reads would be slightly differently aligned from their RC pairs
                 # Thus resulting in different overlap lengths
                 # -----------------------------------------------------------------------------------
-
-                try:
-                    ol_length = int(cigar[:-1])  # Assumption: this is overlap length and not a CIGAR string
-                except ValueError:
-                    print('Cannot convert CIGAR string into overlap length!')
-                    raise ValueError
                 
                 overlap_lengths[(src_real, dst_real)] = ol_length
                 overlap_lengths[(src_virt, dst_virt)] = ol_length
