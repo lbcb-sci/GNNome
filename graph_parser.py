@@ -161,10 +161,7 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
             line_idx += 1
             line = line.strip().split()
             if line[0] == 'S':
-                if len(line) == 5:  # Hifiasm
-                    tag, id, sequence, length, count = line
-                if len(line) == 4:  # Raven
-                    tag, id, sequence, length = line
+                tag, id, sequence, length = line[:4]
                 if sequence == '*':
                     no_seqs_flag = True
                 sequence = Seq(sequence)  # This sequence is already trimmed in raven!
@@ -286,6 +283,14 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 else:
                     raise Exception("Unknown GFA format!")
 
+                try:
+                    ol_length = int(cigar[:-1])  # Assumption: this is overlap length and not a CIGAR string
+                except ValueError:
+                    print('Cannot convert CIGAR string into overlap length!')
+                    raise ValueError
+                if ol_length == 0:
+                    continue
+
                 if orient1 == '+' and orient2 == '+':
                     src_real = read_to_node[id1][0]
                     dst_real = read_to_node[id2][0]
@@ -322,12 +327,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 # Thus resulting in different overlap lengths
                 # -----------------------------------------------------------------------------------
 
-                try:
-                    ol_length = int(cigar[:-1])  # Assumption: this is overlap length and not a CIGAR string
-                except ValueError:
-                    print('Cannot convert CIGAR string into overlap length!')
-                    raise ValueError
-                
                 overlap_lengths[(src_real, dst_real)] = ol_length
                 overlap_lengths[(src_virt, dst_virt)] = ol_length
 
