@@ -100,18 +100,19 @@ def print_pairwise(graph, path):
 def calculate_similarities(edge_ids, read_seqs, overlap_lengths):
     # Make sure that read_seqs is a dict of string, not Bio.Seq objects!
     overlap_similarities = {}
+    zero_ovlp_reads = []
     for src, dst in tqdm(edge_ids.keys(), ncols=120):
         ol_length = overlap_lengths[(src, dst)]
-        read_src = read_seqs[src]
-        read_dst = read_seqs[dst]
-        edit_distance = edlib.align(read_src[-ol_length:], read_dst[:ol_length])['editDistance']
-        try:
+        if ol_length > 0:
+            read_src = read_seqs[src]
+            read_dst = read_seqs[dst]
+            edit_distance = edlib.align(read_src[-ol_length:], read_dst[:ol_length])['editDistance']
             overlap_similarities[(src, dst)] = 1 - edit_distance / ol_length
-        except ZeroDivisionError:
-            print(f'Zero division error occurs for reads: {src}\t{dst}')
-            print(f'Their edit distance is: {edit_distance}')
-            print(f'Overlap length (expected zero): {ol_length}')
-            raise
+        else:
+            overlap_similarities[(src, dst)] = 0.5
+            zero_ovlp_reads.append((src, dst))
+    if len(zero_ovlp_reads) > 0:
+        print(f'Zero division error occurs for {len(zero_ovlp_reads)} pairs:\t', zero_ovlp_reads)
     return overlap_similarities
 
 
@@ -235,8 +236,6 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
                 except ValueError:
                     print('Cannot convert CIGAR string into overlap length!')
                     raise ValueError
-                if ol_length == 0:
-                    continue
 
                 if orient1 == '+' and orient2 == '+':
                     src_real = read_to_node[id1][0]
