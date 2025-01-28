@@ -7,7 +7,6 @@ import re
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.nn.functional import kl_div
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 # from torch.profiler import profile, record_function, ProfilerActivity
 import dgl
@@ -19,6 +18,7 @@ from config import get_config
 import models
 import utils
 from inference import inference
+
 
 def save_checkpoint(epoch, model, optimizer, loss_train, loss_valid, out, ckpt_path):
     checkpoint = {
@@ -77,6 +77,84 @@ def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
     return loss
 
 
+def get_full_ne_features(g, reverse=False):
+    pe_in = g.ndata['in_deg'].unsqueeze(1)
+    pe_in = (pe_in - pe_in.mean()) / pe_in.std()
+    pe_out = g.ndata['out_deg'].unsqueeze(1)
+    pe_out = (pe_out - pe_out.mean()) / pe_out.std()
+    if reverse:
+        x = torch.cat((pe_out, pe_in), dim=1)  # Reversed edges, in/out-deg also reversed
+    else:
+        x = torch.cat((pe_in, pe_out), dim=1)
+    e = g.edata['e']
+    return x, e
+
+
+def get_partition_ne_features(sub_g, g, reverse=False):
+    pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1)
+    pe_in = (pe_in - pe_in.mean()) / pe_in.std()
+    pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1)
+    pe_out = (pe_out - pe_out.mean()) / pe_out.std()
+    if reverse:
+        x = torch.cat((pe_out, pe_in), dim=1)  # Reversed edges, in/out-deg also reversed
+    else:
+        x = torch.cat((pe_in, pe_out), dim=1)
+    e = g.edata['e'][sub_g.edata['_ID']]
+    return x, e
+
+
+def get_bce_loss_full(g, model, pos_weight, device):
+    x, e = get_full_ne_features(g, reverse=False)
+    x, e = x.to(device), e.to(device)
+    logits = model(g, x, e)
+    logits = logits.squeeze(-1)
+    edge_labels = g.edata['y'].to(device)
+    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    loss = criterion(logits, edge_labels)
+    return loss, logits
+
+
+def get_bce_loss_partition(sub_g, g, model, pos_weight, device):
+    sub_g = sub_g.to(device)
+    x, e = get_partition_ne_features(sub_g, g, reverse=False)
+    x, e = x.to(device), e.to(device)
+    logits = model(sub_g, x, e) 
+    logits = logits.squeeze(-1)
+    edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)
+    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    loss = criterion(logits, edge_labels)
+    return loss, logits  # TODO: This should only return logits, loss compute outside
+
+
+def get_symmetry_loss_full(g, model, pos_weight, alpha, device):
+    x, e = get_full_ne_features(g, reverse=False)
+    x, e = x.to(device), e.to(device)
+    logits_org = model(g, x, e).squeeze(-1)
+    edge_labels = g.edata['y'].to(device)
+    
+    g = dgl.reverse(g, True, True)
+    x, e = get_full_ne_features(g, reverse=True)
+    x, e = x.to(device), e.to(device)
+    logits_rev = model(g, x, e).squeeze(-1)
+    loss = symmetry_loss(logits_org, logits_rev, edge_labels, pos_weight, alpha=alpha)
+    return loss, logits_org
+
+
+def get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device):
+    sub_g = sub_g.to(device)
+    x, e = get_partition_ne_features(sub_g, g, False)
+    x, e = x.to(device), e.to(device)
+    logits_org = model(sub_g, x, e).squeeze(-1)
+    labels = g.edata['y'][sub_g.edata['_ID']].to(device)
+    
+    sub_g = dgl.reverse(sub_g, True, True)
+    x, e = get_partition_ne_features(sub_g, g, True)
+    x, e = x.to(device), e.to(device)
+    logits_rev = model(sub_g, x, e).squeeze(-1)
+    loss = symmetry_loss(logits_org, logits_rev, labels, pos_weight, alpha=alpha)
+    return loss, logits_org
+
+
 def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None, gpu=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
@@ -104,15 +182,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     mask_frac_low = hyperparameters['mask_frac_low']
     mask_frac_high = hyperparameters['mask_frac_high']
     use_symmetry_loss = hyperparameters['use_symmetry_loss']
-    alpha = hyperparameters['alpha']    
+    alpha = hyperparameters['alpha']
 
     config = get_config()
     checkpoints_path = os.path.abspath(config['checkpoints_path'])
     models_path = os.path.abspath(config['models_path'])
-
-    print(f'----- TRAIN -----')
-    print(f'\nSaving checkpoints: {checkpoints_path}')
-    print(f'Saving models: {models_path}\n')
     
     if gpu:
         # GPU as an option to the train.py script
@@ -122,10 +196,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         torch.cuda.set_device(device)
     else:
         device = 'cpu'
-    print(f'Using device: {device}')
 
     utils.set_seed(seed)
-    print(f'USING SEED: {seed}')
     
     time_start = datetime.now()
     timestamp = time_start.strftime('%Y-%b-%d-%H-%M-%S')
@@ -141,7 +213,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     else:
         ds_train = ds_valid = AssemblyGraphDataset(train_path, assembler=assembler)
 
-    pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for idx, g in ds_train]) / len(ds_train)
+    pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for _, g in ds_train]) / len(ds_train)
 
     model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
     model.to(device)
@@ -150,18 +222,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         os.makedirs(models_path)
 
     out = out + f'_seed{seed}'
-
     model_path = os.path.join(models_path, f'model_{out}.pt')    
-    print(f'MODEL PATH: {model_path}')
-    
     ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'
-    print(f'CHECKPOINT PATH: {ckpt_path}')
-
-    print(f'\nNumber of network parameters: {view_model_param(model)}')
-    print(f'Normalization type : {normalization}\n')
 
     pos_weight = torch.tensor([1 / pos_to_neg_ratio], device=device)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)  # TODO: Is this needed?
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=decay, patience=patience, verbose=True)
     start_epoch = 0
@@ -171,6 +236,15 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
     if not os.path.exists(checkpoints_path):
         os.makedirs(checkpoints_path)
+
+    print(f'----- TRAIN CONFIGURAION SUMMARY -----')
+    print(f'Using device: {device}')
+    print(f'Using seed: {seed}')
+    print(f'Model path: {model_path}')
+    print(f'Checkpoint path: {ckpt_path}')
+    print(f'Number of network parameters: {view_model_param(model)}')
+    print(f'Normalization type : {normalization}')
+    print(f'--------------------------------------\n')
     
     if resume:
         # ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'  # This should be the checkpoint of the old run
@@ -205,11 +279,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         model.load_state_dict(ft_model)
         # optimizer.load_state_dict(checkpoint['optim_state_dict'])
         
-        # min_loss_train = checkpoint['loss_train']
-        # min_loss_valid = checkpoint['loss_valid']
-        # loss_per_epoch_train.append(min_loss_train)
-        # loss_per_epoch_valid.append(min_loss_valid)
-
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'Loading data done. Elapsed time: {elapsed}')
 
@@ -218,14 +287,10 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
             wandb.watch(model, criterion, log='all', log_freq=1000)
 
             for epoch in range(start_epoch, num_epochs):
-
-                train_loss_all_graphs, train_fp_rate_all_graphs, train_fn_rate_all_graphs = [], [], []
-                train_acc_all_graphs, train_precision_all_graphs, train_recall_all_graphs, train_f1_all_graphs = [], [], [], []
                 
                 train_loss_epoch, train_fp_rate_epoch, train_fn_rate_epoch = [], [], []
                 train_acc_epoch, train_precision_epoch, train_recall_epoch, train_f1_epoch = [], [], [], []
                 train_acc_inv_epoch, train_precision_inv_epoch, train_recall_inv_epoch, train_f1_inv_epoch = [], [], [], []
-                train_aps_epoch, train_aps_inv_epoch = [], []
 
                 print('\n===> TRAINING\n')
                 random.shuffle(ds_train.graph_list)
@@ -251,44 +316,15 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         g = g.to(device)
 
                         if use_symmetry_loss:
-                            # x = g.ndata['x'].to(device)
-                            e = g.edata['e'].to(device)
-                            pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
-                            pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                            pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
-                            pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                            x = torch.cat((pe_in, pe_out), dim=1)
-                            org_scores = model(g, x, e).squeeze(-1)
-                            edge_predictions = org_scores
-                            edge_labels = g.edata['y'].to(device)
-                            
-                            g = dgl.reverse(g, True, True)
-                            e = g.edata['e'].to(device)
-                            pe_out = g.ndata['in_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                            pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                            pe_in = g.ndata['out_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                            pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                            x = torch.cat((pe_in, pe_out), dim=1)
-                            rev_scores = model(g, x, e).squeeze(-1)
-                            loss = symmetry_loss(org_scores, rev_scores, edge_labels, pos_weight, alpha=alpha)
+                            loss, logits = get_symmetry_loss_full(g, model, pos_weight, alpha, device)
                         else:
-                            # x = g.ndata['x'].to(device)
-                            e = g.edata['e'].to(device)
-                            pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
-                            pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                            pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
-                            pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                            x = torch.cat((pe_in, pe_out), dim=1)
-                            edge_predictions = model(g, x, e)
-                            edge_predictions = edge_predictions.squeeze(-1)
-                            edge_labels = g.edata['y'].to(device)
-                            loss = criterion(edge_predictions, edge_labels)
+                            loss, logits = get_bce_loss_full(g, model, pos_weight, device)
 
+                        labels = g.edata['y'].to(device)
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                        train_loss = loss.item()
-                        TP, TN, FP, FN = utils.calculate_tfpn(edge_predictions, edge_labels)
+                        TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
                         acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
                         try:
                             fp_rate = FP / (FP + TN)
@@ -298,12 +334,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             fn_rate = FN / (FN + TP)
                         except ZeroDivisionError:
                             fn_rate = 0.0
-                        train_fp_rate = fp_rate
-                        train_fn_rate = fn_rate
-                        train_acc = acc
-                        train_precision = precision
-                        train_recall = recall
-                        train_f1 = f1
                         
                         train_loss_epoch.append(loss.item())
                         train_fp_rate_epoch.append(fp_rate)
@@ -321,59 +351,21 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         d = dgl.metis_partition(g, num_clusters, extra_cached_hops=k_extra_hops)
                         sub_gs = list(d.values())
                         random.shuffle(sub_gs)
-                        
-                        # Loop over all mini-batch in the graph
-                        running_loss, running_fp_rate, running_fn_rate = [], [], []
-                        running_acc, running_precision, running_recall, running_f1 = [], [], [], []
 
                         for sub_g in sub_gs:
-                            
                             if use_symmetry_loss:
-                                sub_g = sub_g.to(device)
-                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                org_scores = model(sub_g, x, e).squeeze(-1)
-                                labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-                                
-                                sub_g = dgl.reverse(sub_g, True, True)
-                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                pe_out = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe_in = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                rev_scores = model(sub_g, x, e).squeeze(-1)
-                                
-                                loss = symmetry_loss(org_scores, rev_scores, labels, pos_weight, alpha=alpha)
-                                edge_predictions = org_scores
-                                edge_labels = labels
-
+                                loss, logits = get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device)
                             else:
-                                sub_g = sub_g.to(device)
-                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                edge_predictions = model(sub_g, x, e) 
-                                edge_predictions = edge_predictions.squeeze(-1)
+                                loss, logits = get_bce_loss_partition(sub_g, g, model, pos_weight, device)
 
-                                edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-                                loss = criterion(edge_predictions, edge_labels)
+                            labels = g.edata['y'][sub_g.edata['_ID']].to(device)
 
                             optimizer.zero_grad()
                             loss.backward()
                             optimizer.step()
 
-                            TP, TN, FP, FN = utils.calculate_tfpn(edge_predictions, edge_labels)
+                            # TODO: How to handle edge_predictions?
+                            TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
                             acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
                             acc_inv, precision_inv, recall_inv, f1_inv =  utils.calculate_metrics_inverse(TP, TN, FP, FN)
                             
@@ -385,16 +377,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 fn_rate = FN / (FN + TP)
                             except ZeroDivisionError:
                                 fn_rate = 0.0
-                                
-                            # Append results of a single mini-batch / METIS partition
-                            # These are used for epoch mean = mean over partitions over graphs - mostly DEPRECATED
-                            running_loss.append(loss.item())
-                            running_fp_rate.append(fp_rate)
-                            running_fn_rate.append(fn_rate)
-                            running_acc.append(acc)
-                            running_precision.append(precision)
-                            running_recall.append(recall)
-                            running_f1.append(f1)
                             
                             # These are used for epoch mean = mean over all the partitions in all the graphs
                             train_loss_epoch.append(loss.item())
@@ -411,37 +393,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             train_recall_inv_epoch.append(recall_inv)
                             train_f1_inv_epoch.append(f1_inv)
 
-                        # Average over all mini-batches (partitions) in a single graph - mostly DEPRECATED
-                        train_loss = np.mean(running_loss)
-                        train_fp_rate = np.mean(running_fp_rate)
-                        train_fn_rate = np.mean(running_fn_rate)
-                        train_acc = np.mean(running_acc)
-                        train_precision = np.mean(running_precision)
-                        train_recall = np.mean(running_recall)
-                        train_f1 = np.mean(running_f1)
-
-                        # elapsed = utils.timedelta_to_str(datetime.now() - time_start)
-                        # print(f'\nTRAINING (one training graph): Epoch = {epoch}, Graph = {idx}')
-                        # print(f'Loss: {train_loss:.4f}, fp_rate(GT=0): {train_fp_rate:.4f}, fn_rate(GT=1): {train_fn_rate:.4f}')
-                        # print(f'elapsed time: {elapsed}\n\n')
-
-                    # Record after each graph in the dataset - mostly DEPRECATED
-                    train_loss_all_graphs.append(train_loss)
-                    train_fp_rate_all_graphs.append(train_fp_rate)
-                    train_fn_rate_all_graphs.append(train_fn_rate)
-                    train_acc_all_graphs.append(train_acc)
-                    train_precision_all_graphs.append(train_precision)
-                    train_recall_all_graphs.append(train_recall)
-                    train_f1_all_graphs.append(train_f1)
-
-                # Average over all the training graphs in one epoch - mostly DEPRECATED
-                train_loss_all_graphs = np.mean(train_loss_all_graphs)
-                train_fp_rate_all_graphs = np.mean(train_fp_rate_all_graphs)
-                train_fn_rate_all_graphs = np.mean(train_fn_rate_all_graphs)
-                train_acc_all_graphs = np.mean(train_acc_all_graphs)
-                train_precision_all_graphs = np.mean(train_precision_all_graphs)
-                train_recall_all_graphs = np.mean(train_recall_all_graphs)
-                train_f1_all_graphs = np.mean(train_f1_all_graphs)
+                        exit(0)
                 
                 # Average over all the partitions in one epoch
                 train_loss_epoch = np.mean(train_loss_epoch)
@@ -470,11 +422,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         torch.save(model.state_dict(), model_path)
                         print(f'Epoch {epoch}: Model saved!')
                     save_checkpoint(epoch, model, optimizer, loss_per_epoch_train[-1], 0.0, out, ckpt_path)
-                    scheduler.step(train_loss_all_graphs)
-                    wandb.log({'train_loss': train_loss_all_graphs, 'train_accuracy': train_acc_all_graphs, \
-                               'train_precision': train_precision_all_graphs, 'lr_value': lr_value, \
-                               'train_recall': train_recall_all_graphs, 'train_f1': train_f1_all_graphs, \
-                               'train_fp-rate': train_fp_rate_all_graphs, 'train_fn-rate': train_fn_rate_all_graphs})
+                    scheduler.step(train_loss_epoch)
+                    wandb.log({'train_loss': train_loss_epoch, 'train_accuracy': train_acc_epoch, \
+                               'train_precision': train_precision_epoch, 'lr_value': lr_value, \
+                               'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
+                               'train_fp-rate': train_fp_rate_epoch, 'train_fn-rate': train_fn_rate_epoch})
 
                     continue  # This will entirely skip the validation
 
@@ -488,7 +440,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
                 with torch.no_grad():
                     print('\n===> VALIDATION\n')
-                    time_start_eval = datetime.now()
+                    # time_start_eval = datetime.now()
                     model.eval()
                     for data in ds_valid:
                         idx, g = data
@@ -511,42 +463,12 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             g = g.to(device)
 
                             if use_symmetry_loss:
-                                # x = g.ndata['x'].to(device)
-                                e = g.edata['e'].to(device)
-                                pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                org_scores = model(g, x, e).squeeze(-1)
-                                edge_predictions = org_scores
-                                edge_labels = g.edata['y'].to(device)
-                                
-                                g = dgl.reverse(g, True, True)
-                                # x = g.ndata['x'].to(device)
-                                e = g.edata['e'].to(device)
-                                pe_out = g.ndata['in_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe_in = g.ndata['out_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                rev_scores = model(g, x, e).squeeze(-1)
-                                loss = symmetry_loss(org_scores, rev_scores, edge_labels, pos_weight, alpha=alpha)    
+                                loss, logits = get_symmetry_loss_full(g, model, pos_weight, alpha, device)
                             else:
-                                # x = g.ndata['x'].to(device)
-                                e = g.edata['e'].to(device)
-                                pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
-                                pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
-                                pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                x = torch.cat((pe_in, pe_out), dim=1)
-                                edge_predictions = model(g, x, e)
-                                edge_predictions = edge_predictions.squeeze(-1)
-                                edge_labels = g.edata['y'].to(device)
-                                loss = criterion(edge_predictions, edge_labels)
+                                loss, logits = get_bce_loss_full(g, model, pos_weight, device)
 
-                            val_loss = loss.item()
-                            TP, TN, FP, FN = utils.calculate_tfpn(edge_predictions, edge_labels)
+                            labels = g.edata['y'].to(device)
+                            TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
                             acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
                             try:
                                 fp_rate = FP / (FP + TN)
@@ -556,12 +478,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 fn_rate = FN / (FN + TP)
                             except ZeroDivisionError:
                                 fn_rate = 0.0
-                            val_fp_rate = fp_rate
-                            val_fn_rate = fn_rate
-                            val_acc = acc
-                            val_precision = precision
-                            val_recall = recall
-                            val_f1 = f1
                             
                             valid_loss_epoch.append(loss.item())
                             valid_fp_rate_epoch.append(fp_rate)
@@ -578,54 +494,16 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             d = dgl.metis_partition(g, num_clusters, extra_cached_hops=k_extra_hops)
                             sub_gs = list(d.values())
                             # g = g.to(device)
-
-                            # For loop over all mini-batch in the graph
-                            running_loss, running_fp_rate, running_fn_rate = [], [], []
-                            running_acc, running_precision, running_recall, running_f1 = [], [], [], []
                             
                             for sub_g in sub_gs:
                                 
                                 if use_symmetry_loss:
-                                    sub_g = sub_g.to(device)                                    
-                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                    e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                    pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                    pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                    pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                    pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                    x = torch.cat((pe_in, pe_out), dim=1)
-                                    org_scores = model(sub_g, x, e).squeeze(-1)
-                                    labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-
-                                    sub_g = dgl.reverse(sub_g, True, True)
-                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                    e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                    pe_out = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                    pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                    pe_in = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
-                                    pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                    x = torch.cat((pe_in, pe_out), dim=1)
-                                    rev_scores = model(sub_g, x, e).squeeze(-1)
-                                    
-                                    loss = symmetry_loss(org_scores, rev_scores, labels, pos_weight, alpha=alpha)
-                                    edge_predictions = org_scores
-                                    edge_labels = labels
+                                    loss, logits = get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device)
                                 else:
-                                    sub_g = sub_g.to(device)
-                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
-                                    e = g.edata['e'][sub_g.edata['_ID']].to(device)
-                                    pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                    pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                    pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
-                                    pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                    x = torch.cat((pe_in, pe_out), dim=1)
-                                    edge_predictions = model(sub_g, x, e) 
-                                    edge_predictions = edge_predictions.squeeze(-1)
-                                    
-                                    edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-                                    loss = criterion(edge_predictions, edge_labels)
+                                    loss, logits = get_bce_loss_partition(sub_g, g, model, pos_weight, device)
 
-                                TP, TN, FP, FN = utils.calculate_tfpn(edge_predictions, edge_labels)
+                                labels = g.edata['y'][sub_g.edata['_ID']].to(device)
+                                TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
                                 acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
                                 acc_inv, precision_inv, recall_inv, f1_inv =  utils.calculate_metrics_inverse(TP, TN, FP, FN)
                                 
@@ -637,16 +515,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                     fn_rate = FN / (FN + TP)
                                 except ZeroDivisionError:
                                     fn_rate = 0.0
-
-                                # Append results of a single mini-batch / METIS partition
-                                # These are used for epoch mean = mean over partitions over graphs - mostly DEPRECATED
-                                running_loss.append(loss.item())
-                                running_fp_rate.append(fp_rate)
-                                running_fn_rate.append(fn_rate)
-                                running_acc.append(acc)
-                                running_precision.append(precision)
-                                running_recall.append(recall)
-                                running_f1.append(f1)
                                 
                                 # These are used for epoch mean = mean over all the partitions in all the graphs
                                 valid_loss_epoch.append(loss.item())
@@ -662,38 +530,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 valid_precision_inv_epoch.append(precision_inv)
                                 valid_recall_inv_epoch.append(recall_inv)
                                 valid_f1_inv_epoch.append(f1_inv)
-
-                            # Average over all mini-batches (partitions) in a single graph - mostly DEPRECATED
-                            val_loss = np.mean(running_loss)
-                            val_fp_rate = np.mean(running_fp_rate)
-                            val_fn_rate = np.mean(running_fn_rate)
-                            val_acc = np.mean(running_acc)
-                            val_precision = np.mean(running_precision)
-                            val_recall = np.mean(running_recall)
-                            val_f1 = np.mean(running_f1)
-
-                            # elapsed = utils.timedelta_to_str(datetime.now() - time_start_eval)
-                            # print(f'\nVALIDATION (one validation graph): Epoch = {epoch}, Graph = {idx}')
-                            # print(f'Loss: {val_loss:.4f}, fp_rate(GT=0): {val_fp_rate:.4f}, fn_rate(GT=1): {val_fn_rate:.4f}')
-                            # print(f'elapsed time: {elapsed}\n\n')
-
-                        # Record after each graph in the dataset - mostly DEPRECATED
-                        val_loss_all_graphs.append(val_loss)
-                        val_fp_rate_all_graphs.append(val_fp_rate)
-                        val_fn_rate_all_graphs.append(val_fn_rate)
-                        val_acc_all_graphs.append(val_acc)
-                        val_precision_all_graphs.append(val_precision)
-                        val_recall_all_graphs.append(val_recall)
-                        val_f1_all_graphs.append(val_f1)
-
-                    # Average over all the training graphs in one epoch - mostly DEPRECATED
-                    val_loss_all_graphs = np.mean(val_loss_all_graphs)
-                    val_fp_rate_all_graphs = np.mean(val_fp_rate_all_graphs)
-                    val_fn_rate_all_graphs = np.mean(val_fn_rate_all_graphs)
-                    val_acc_all_graphs = np.mean(val_acc_all_graphs)
-                    val_precision_all_graphs = np.mean(val_precision_all_graphs)
-                    val_recall_all_graphs = np.mean(val_recall_all_graphs)
-                    val_f1_all_graphs = np.mean(val_f1_all_graphs)
                     
                     # Average over all the partitions in one epoch
                     valid_loss_epoch = np.mean(valid_loss_epoch)
@@ -774,16 +610,16 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                     try:
                         if 'nga50' in locals():
                             pass
-                            # wandb.log({'train_loss': train_loss_all_graphs, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
+                            # wandb.log({'train_loss': train_loss_epoch, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
                             #            'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
                             #            'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
                             #            'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
                             #            'valid_acc_aggr': valid_acc_epoch, 'valid_precision_aggr': valid_precision_epoch, 'valid_recall_aggr': valid_recall_epoch, 'valid_f1_aggr': valid_f1_epoch, \
                             #            'train_precision_inv_aggr': train_precision_inv_epoch, 'train_recall_inv_aggr': train_recall_inv_epoch, 'train_f1_inv_aggr': train_f1_inv_epoch, \
-                            #            'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch, \
+                            #            'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch \
                             #            'NG50': ng50, 'NGA50': nga50})
                         else:
-                            wandb.log({'train_loss': train_loss_all_graphs, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
+                            wandb.log({'train_loss': train_loss_epoch, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
                                        'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
                                        'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
                                        'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
