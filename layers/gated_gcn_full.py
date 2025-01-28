@@ -4,8 +4,6 @@ import torch.nn.functional as F
 import dgl
 import dgl.function as fn
 
-from hyperparameters import get_hyperparameters
-
 
 class SymGatedGCN(nn.Module):
     """
@@ -13,15 +11,14 @@ class SymGatedGCN(nn.Module):
     paper by Xavier Bresson and Thomas Laurent, ICLR 2018.
     https://arxiv.org/pdf/1711.07553v2.pdf
     """
-    def __init__(self, in_channels, out_channels, batch_norm, dropout=None, residual=True):
+    def __init__(self, in_channels, out_channels, normalization, dropout=None, residual=True):
         super().__init__()
         if dropout:
-            # print(f'Using dropout: {dropout}')
             self.dropout = dropout
         else:
-            # print(f'Using dropout: 0.00')
             self.dropout = 0.0
-        self.batch_norm = batch_norm
+        # print(f'Using dropout: {self.dropout}')
+        self.normalization = normalization
         self.residual = residual
 
         if in_channels != out_channels:
@@ -37,50 +34,50 @@ class SymGatedGCN(nn.Module):
         self.B_2 = nn.Linear(in_channels, out_channels, dtype=dtype)
         self.B_3 = nn.Linear(in_channels, out_channels, dtype=dtype)
 
-        if batch_norm: # batch normalization
+        if normalization == 'batch':  # batch normalization
             self.bn_h = nn.BatchNorm1d(out_channels, track_running_stats=True)
             self.bn_e = nn.BatchNorm1d(out_channels, track_running_stats=True)
-        else: # layer normalization
+        elif normalization == 'layer':  # layer normalization
             self.bn_h = nn.LayerNorm(out_channels) 
             self.bn_e = nn.LayerNorm(out_channels) 
 
-    def message_forward(self, edges):
-        """Message function used on the original graph."""
-        A2h_j = edges.src['A2h']
-        e_ji = edges.src['B1h'] + edges.dst['B2h'] + edges.data['B3e']  # e_ji = B_1*h_j + B_2*h_i + B_3*e_ji
-        if self.batch_norm:
-            e_ji = self.bn_e(e_ji)
-        e_ji = F.relu(e_ji)
-        if self.residual:
-            e_ji = e_ji + edges.data['e']
-        return {'A2h_j': A2h_j, 'e_ji': e_ji}
+    # def message_forward(self, edges):
+    #     """Message function used on the original graph."""
+    #     A2h_j = edges.src['A2h']
+    #     e_ji = edges.src['B1h'] + edges.dst['B2h'] + edges.data['B3e']  # e_ji = B_1*h_j + B_2*h_i + B_3*e_ji
+    #     if self.normalization != 'none':
+    #         e_ji = self.bn_e(e_ji)
+    #     e_ji = F.relu(e_ji)
+    #     if self.residual:
+    #         e_ji = e_ji + edges.data['e']
+    #     return {'A2h_j': A2h_j, 'e_ji': e_ji}
 
-    def reduce_forward(self, nodes):
-        """Reduce function used on the original graph."""
-        A2h_j = nodes.mailbox['A2h_j']
-        e_ji = nodes.mailbox['e_ji']
-        sigma_ji = torch.sigmoid(e_ji)
-        h_forward = torch.sum(sigma_ji * A2h_j, dim=1) / (torch.sum(sigma_ji, dim=1) + 1e-6)
-        return {'h_forward': h_forward}
+    # def reduce_forward(self, nodes):
+    #     """Reduce function used on the original graph."""
+    #     A2h_j = nodes.mailbox['A2h_j']
+    #     e_ji = nodes.mailbox['e_ji']
+    #     sigma_ji = torch.sigmoid(e_ji)
+    #     h_forward = torch.sum(sigma_ji * A2h_j, dim=1) / (torch.sum(sigma_ji, dim=1) + 1e-6)
+    #     return {'h_forward': h_forward}
 
-    def message_backward(self, edges):
-        """Message function used on the reverse graph."""
-        A3h_k = edges.src['A3h']
-        e_ik = edges.dst['B1h'] + edges.src['B2h'] + edges.data['B3e']  # e_ik = B_1*h_i + B_2*h_k + B_3*e_ik
-        if self.batch_norm:
-            e_ik = self.bn_e(e_ik)
-        e_ik = F.relu(e_ik)
-        if self.residual:
-            e_ik = e_ik + edges.data['e']
-        return {'A3h_k': A3h_k, 'e_ik': e_ik}
+    # def message_backward(self, edges):
+    #     """Message function used on the reverse graph."""
+    #     A3h_k = edges.src['A3h']
+    #     e_ik = edges.dst['B1h'] + edges.src['B2h'] + edges.data['B3e']  # e_ik = B_1*h_i + B_2*h_k + B_3*e_ik
+    #     if self.normalization != 'none':
+    #         e_ik = self.bn_e(e_ik)
+    #     e_ik = F.relu(e_ik)
+    #     if self.residual:
+    #         e_ik = e_ik + edges.data['e']
+    #     return {'A3h_k': A3h_k, 'e_ik': e_ik}
 
-    def reduce_backward(self, nodes):
-        """Reduce function used on the reverse graph."""
-        A3h_k = nodes.mailbox['A3h_k']
-        e_ik = nodes.mailbox['e_ik']
-        sigma_ik = torch.sigmoid(e_ik)
-        h_backward = torch.sum(sigma_ik * A3h_k, dim=1) / (torch.sum(sigma_ik, dim=1) + 1e-6)
-        return {'h_backward': h_backward}
+    # def reduce_backward(self, nodes):
+    #     """Reduce function used on the reverse graph."""
+    #     A3h_k = nodes.mailbox['A3h_k']
+    #     e_ik = nodes.mailbox['e_ik']
+    #     sigma_ik = torch.sigmoid(e_ik)
+    #     h_backward = torch.sum(sigma_ik * A3h_k, dim=1) / (torch.sum(sigma_ik, dim=1) + 1e-6)
+    #     return {'h_backward': h_backward}
 
     def forward(self, g, h, e):
         """Return updated node representations."""
@@ -131,7 +128,8 @@ class SymGatedGCN(nn.Module):
 
             h = g.ndata['A1h'] + g.ndata['h_forward'] + g_reverse.ndata['h_backward']
 
-            h = self.bn_h(h)
+            if self.normalization != 'none':
+                h = self.bn_h(h)
 
             h = F.relu(h)
 
@@ -150,7 +148,7 @@ class GatedGCN(nn.Module):
     paper by Xavier Bresson and Thomas Laurent, ICLR 2018.
     https://arxiv.org/pdf/1711.07553v2.pdf
     """
-    def __init__(self, in_channels, out_channels, batch_norm, dropout=None, residual=True):
+    def __init__(self, in_channels, out_channels, normalization, dropout=None, residual=True):
         super().__init__()
         if dropout:
             # print(f'Using dropout: {dropout}')
@@ -158,7 +156,7 @@ class GatedGCN(nn.Module):
         else:
             # print(f'Using dropout: 0.00')
             self.dropout = 0.0
-        self.batch_norm = batch_norm
+        self.normalization = normalization
         self.residual = residual
 
         if in_channels != out_channels:
@@ -168,16 +166,16 @@ class GatedGCN(nn.Module):
 
         self.A_1 = nn.Linear(in_channels, out_channels, dtype=dtype)
         self.A_2 = nn.Linear(in_channels, out_channels, dtype=dtype)
-        self.A_3 = nn.Linear(in_channels, out_channels, dtype=dtype)  # Not used
+        # self.A_3 = nn.Linear(in_channels, out_channels, dtype=dtype)  # Not used
         
         self.B_1 = nn.Linear(in_channels, out_channels, dtype=dtype)
         self.B_2 = nn.Linear(in_channels, out_channels, dtype=dtype)
         self.B_3 = nn.Linear(in_channels, out_channels, dtype=dtype)
 
-        if batch_norm: # batch normalization
+        if normalization == 'batch':  # batch normalization
             self.bn_h = nn.BatchNorm1d(out_channels, track_running_stats=True)
             self.bn_e = nn.BatchNorm1d(out_channels, track_running_stats=True)
-        else: # layer normalization
+        elif normalization == 'layer':  # layer normalization
             self.bn_h = nn.LayerNorm(out_channels) 
             self.bn_e = nn.LayerNorm(out_channels) 
 
@@ -218,7 +216,8 @@ class GatedGCN(nn.Module):
 
             h = g.ndata['A1h'] + g.ndata['h_forward']
 
-            h = self.bn_h(h)
+            if self.normalization != 'none':
+                h = self.bn_h(h)
 
             h = F.relu(h)
 

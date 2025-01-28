@@ -9,14 +9,14 @@ import layers
 
 
 class SymGatedGCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=None):
         super().__init__()
         hidden_node_features = hidden_edge_features
         self.linear1_node = nn.Linear(node_features, hidden_node_features)
         self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
         self.linear1_edge = nn.Linear(edge_features, hidden_edge_features) 
         self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features) 
-        self.gnn = layers.SymGatedGCN_processor(num_layers, hidden_features, batch_norm, dropout=dropout)
+        self.gnn = layers.SymGatedGCN_processor(num_layers, hidden_features, normalization, dropout=dropout)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
     def forward(self, graph, x, e, pe):
@@ -35,7 +35,7 @@ class SymGatedGCNModel(nn.Module):
 
 
 class GatedGCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None, directed=True):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=None, directed=True):
         super().__init__()
         self.directed = directed
         hidden_node_features = hidden_edge_features
@@ -43,7 +43,7 @@ class GatedGCNModel(nn.Module):
         self.linear2_node = nn.Linear(hidden_node_features, hidden_features)
         self.linear1_edge = nn.Linear(edge_features, hidden_edge_features) 
         self.linear2_edge = nn.Linear(hidden_edge_features, hidden_features) 
-        self.gnn = layers.GatedGCN_processor(num_layers, hidden_features, batch_norm, dropout=dropout)
+        self.gnn = layers.GatedGCN_processor(num_layers, hidden_features, normalization, dropout=dropout)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
     def forward(self, graph, x, e, pe):
@@ -69,7 +69,7 @@ class GatedGCNModel(nn.Module):
 
 
 class GCNModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None, directed=True):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=None, directed=True):
         super().__init__()
         self.directed = directed
         hidden_node_features = hidden_edge_features
@@ -100,7 +100,7 @@ class GCNModel(nn.Module):
     
     
 class GATModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None, directed=True):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=None, directed=True):
         super().__init__()
         self.directed = directed
         hidden_node_features = hidden_edge_features
@@ -131,7 +131,7 @@ class GATModel(nn.Module):
 
 
 class SAGEModel(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=None, directed=True):
+    def __init__(self, node_features, edge_features, hidden_features, hidden_edge_features, num_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=None, directed=True):
         super().__init__()
         self.directed = directed
         hidden_node_features = hidden_edge_features

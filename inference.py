@@ -23,7 +23,9 @@ import evaluate
 import utils
 
 DEBUG = False
-
+RANDOM = False
+p_threshold = 0.06
+early_stopping = False
 
 def get_contig_length(walk, graph):
     total_length = 0
@@ -54,8 +56,7 @@ def sample_edges(prob_edges, nb_paths):
     if prob_edges.shape[0] > 2**24:
         prob_edges = prob_edges[:2**24]  # torch.distributions.categorical.Categorical does not support tensors longer than 2**24
         
-    random_search = False
-    if random_search:
+    if RANDOM:
         idx_edges = torch.randint(0, prob_edges.shape[0], (nb_paths,))
         return idx_edges
     
@@ -93,7 +94,17 @@ def greedy_forwards(start, logProbs, neighbors, predecessors, edges, visited_old
         if not neighbor_edges:
             break
         neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        if early_stopping:
+            if (neighbor_p < math.log(p_threshold)).all().item():
+                return walk, visited, sumLogProb
+
+        if RANDOM:
+            index = torch.randint(0, neighbor_p.shape[0], (1,))
+            logProb = neighbor_p[index]
+        else:
+            logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
         sumLogProb += logProb
         iteration += 1
         current = masked_neighbors[index]
@@ -127,7 +138,18 @@ def greedy_backwards_rc(start, logProbs, predecessors, neighbors, edges, visited
         if not neighbor_edges:
             break
         neighbor_p = logProbs[neighbor_edges]
-        logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
+        if early_stopping:
+            if (neighbor_p < math.log(p_threshold)).all().item():
+                walk = list(reversed([w ^ 1 for w in walk]))
+                return walk, visited, sumLogProb
+
+        if RANDOM:
+            index = torch.randint(0, neighbor_p.shape[0], (1,))
+            logProb = neighbor_p[index]
+        else:
+            logProb, index = torch.topk(neighbor_p, k=1, dim=0)
+
         sumLogProb += logProb
         iteration += 1
         current = masked_neighbors[index]
@@ -136,8 +158,9 @@ def greedy_backwards_rc(start, logProbs, predecessors, neighbors, edges, visited
     
 
 def run_greedy_both_ways(src, dst, logProbs, succs, preds, edges, visited):
-    walk_f, visited_f, sumLogProb_f = greedy_forwards(dst, logProbs, succs, preds, edges, visited)
-    walk_b, visited_b, sumLogProb_b = greedy_backwards_rc(src, logProbs, preds, succs, edges, visited | visited_f)
+    tmp_visited = visited | {src, src ^ 1, dst, dst ^ 1}
+    walk_f, visited_f, sumLogProb_f = greedy_forwards(dst, logProbs, succs, preds, edges, tmp_visited)
+    walk_b, visited_b, sumLogProb_b = greedy_backwards_rc(src, logProbs, preds, succs, edges, tmp_visited | visited_f)
     return walk_f, walk_b, visited_f, visited_b, sumLogProb_f, sumLogProb_b
 
 
@@ -178,6 +201,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         time_start_sample_edges = datetime.now()
         sub_g, map_subg_to_g = get_subgraph(g, visited, 'cpu')
         if sub_g.num_edges() == 0:
+            print(f'No edges left in the subgraph. Stopping...')
             break
         
         if use_labels:  # Debugging
@@ -243,9 +267,9 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
                 sumLogProb_it = sumLogProb_f.item() + sumLogProb_b.item()
                 len_walk_it = len(walk_it)
                 len_contig_it = get_contig_length(walk_it, g).item()
+
                 if k[0] == k[1]:
                     len_walk_it = 1
-                
                 if len_walk_it > 2:
                     meanLogProb_it = sumLogProb_it / (len_walk_it - 2)  # len(walk_f) - 1 + len(walk_b) - 1  <-> starting edge is neglected
                     try:
@@ -345,7 +369,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     hidden_features = hyperparameters['dim_latent']
     nb_pos_enc = hyperparameters['nb_pos_enc']
 
-    batch_norm = hyperparameters['batch_norm']
+    normalization = hyperparameters['normalization']
     node_features = hyperparameters['node_features']
     edge_features = hyperparameters['edge_features']
     hidden_edge_features = hyperparameters['hidden_edge_features']
@@ -358,6 +382,8 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     use_labels = hyperparameters['decode_with_labels']
     load_checkpoint = hyperparameters['load_checkpoint']
     threads = hyperparameters['num_threads']
+
+    # random_search = hyperparameters['random_search']
 
     # assembly_path = hyperparameters['asms_path']
 
@@ -404,9 +430,11 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                 if os.path.isfile(predicts_path):
                     print(f'Loading the scores from:\n{predicts_path}\n')
                     g.edata['score'] = torch.load(predicts_path)
+                elif RANDOM:
+                    g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
                 else:
                     print(f'Loading model parameters from: {model_path}')
-                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, batch_norm, nb_pos_enc, dropout=dropout)
+                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
                     model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
                     model.eval()
                     model.to(device)
@@ -446,7 +474,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         print(f'elapsed time (get_walks): {elapsed}')
         inference_path = os.path.join(inference_dir, f'{idx}_walks.pkl')
         pickle.dump(walks, open(f'{inference_path}', 'wb'))
-        
+
         print(f'Loading reads...')
         with open(f'{data_path}/{assembler}/info/{idx}_reads.pkl', 'rb') as f_reads:
             reads = pickle.load(f_reads)
