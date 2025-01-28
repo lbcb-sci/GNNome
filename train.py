@@ -610,22 +610,22 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                     try:
                         if 'nga50' in locals():
                             pass
-                            # wandb.log({'train_loss': train_loss_epoch, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
-                            #            'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
-                            #            'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
-                            #            'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
-                            #            'valid_acc_aggr': valid_acc_epoch, 'valid_precision_aggr': valid_precision_epoch, 'valid_recall_aggr': valid_recall_epoch, 'valid_f1_aggr': valid_f1_epoch, \
-                            #            'train_precision_inv_aggr': train_precision_inv_epoch, 'train_recall_inv_aggr': train_recall_inv_epoch, 'train_f1_inv_aggr': train_f1_inv_epoch, \
-                            #            'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch \
+                            # wandb.log({'train_loss': train_loss_epoch, 'val_loss': valid_loss_epoch, 'lr_value': lr_value, \
+                            #            'train_loss': train_loss_epoch, 'train_fpr': train_fp_rate_epoch, 'train_fnr': train_fn_rate_epoch, \
+                            #            'valid_loss': valid_loss_epoch, 'valid_fpr': valid_fp_rate_epoch, 'valid_fnr': valid_fn_rate_epoch, \
+                            #            'train_acc': train_acc_epoch, 'train_precision': train_precision_epoch, 'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
+                            #            'valid_acc': valid_acc_epoch, 'valid_precision': valid_precision_epoch, 'valid_recall': valid_recall_epoch, 'valid_f1': valid_f1_epoch, \
+                            #            'train_precision_inv': train_precision_inv_epoch, 'train_recall_inv': train_recall_inv_epoch, 'train_f1_inv': train_f1_inv_epoch, \
+                            #            'valid_precision_inv': valid_precision_inv_epoch, 'valid_recall_inv': valid_recall_inv_epoch, 'valid_f1_inv': valid_f1_inv_epoch \
                             #            'NG50': ng50, 'NGA50': nga50})
                         else:
-                            wandb.log({'train_loss': train_loss_epoch, 'val_loss': val_loss_all_graphs, 'lr_value': lr_value, \
-                                       'train_loss_aggr': train_loss_epoch, 'train_fpr_aggr': train_fp_rate_epoch, 'train_fnr_aggr': train_fn_rate_epoch, \
-                                       'valid_loss_aggr': valid_loss_epoch, 'valid_fpr_aggr': valid_fp_rate_epoch, 'valid_fnr_aggr': valid_fn_rate_epoch, \
-                                       'train_acc_aggr': train_acc_epoch, 'train_precision_aggr': train_precision_epoch, 'train_recall_aggr': train_recall_epoch, 'train_f1_aggr': train_f1_epoch, \
-                                       'valid_acc_aggr': valid_acc_epoch, 'valid_precision_aggr': valid_precision_epoch, 'valid_recall_aggr': valid_recall_epoch, 'valid_f1_aggr': valid_f1_epoch, \
-                                       'train_precision_inv_aggr': train_precision_inv_epoch, 'train_recall_inv_aggr': train_recall_inv_epoch, 'train_f1_inv_aggr': train_f1_inv_epoch, \
-                                       'valid_precision_inv_aggr': valid_precision_inv_epoch, 'valid_recall_inv_aggr': valid_recall_inv_epoch, 'valid_f1_inv_aggr': valid_f1_inv_epoch})
+                            wandb.log({'train_loss': train_loss_epoch, 'val_loss': valid_loss_epoch, 'lr_value': lr_value, \
+                                       'train_loss': train_loss_epoch, 'train_fpr': train_fp_rate_epoch, 'train_fnr': train_fn_rate_epoch, \
+                                       'valid_loss': valid_loss_epoch, 'valid_fpr': valid_fp_rate_epoch, 'valid_fnr': valid_fn_rate_epoch, \
+                                       'train_acc': train_acc_epoch, 'train_precision': train_precision_epoch, 'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
+                                       'valid_acc': valid_acc_epoch, 'valid_precision': valid_precision_epoch, 'valid_recall': valid_recall_epoch, 'valid_f1': valid_f1_epoch, \
+                                       'train_precision_inv': train_precision_inv_epoch, 'train_recall_inv': train_recall_inv_epoch, 'train_f1_inv': train_f1_inv_epoch, \
+                                       'valid_precision_inv': valid_precision_inv_epoch, 'valid_recall_inv': valid_recall_inv_epoch, 'valid_f1_inv': valid_f1_inv_epoch})
                     except Exception as e:
                         print(f'WandB exception occured!')
                         print(e)
