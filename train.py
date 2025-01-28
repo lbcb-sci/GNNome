@@ -297,7 +297,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                 for data in ds_train:
                     model.train()
                     idx, g = data
-                    
+
                     print(f'\n(TRAIN: Epoch = {epoch:3}) NEW GRAPH: index = {idx}')
 
                     if masking:
@@ -429,14 +429,10 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                'train_fp-rate': train_fp_rate_epoch, 'train_fn-rate': train_fn_rate_epoch})
 
                     continue  # This will entirely skip the validation
-
-                val_loss_all_graphs, val_fp_rate_all_graphs, val_fn_rate_all_graphs = [], [], []
-                val_acc_all_graphs, val_precision_all_graphs, val_recall_all_graphs, val_f1_all_graphs = [], [], [], []
                 
                 valid_loss_epoch, valid_fp_rate_epoch, valid_fn_rate_epoch = [], [], []
                 valid_acc_epoch, valid_precision_epoch, valid_recall_epoch, valid_f1_epoch = [], [], [], []
                 valid_acc_inv_epoch, valid_precision_inv_epoch, valid_recall_inv_epoch, valid_f1_inv_epoch = [], [], [], []
-                valid_aps_epoch, valid_aps_inv_epoch = [], []
 
                 with torch.no_grad():
                     print('\n===> VALIDATION\n')
