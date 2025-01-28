@@ -251,45 +251,35 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         g = g.to(device)
 
                         if use_symmetry_loss:
-                            x = g.ndata['x'].to(device)
+                            # x = g.ndata['x'].to(device)
                             e = g.edata['e'].to(device)
-                            # pe = g.ndata['pe'].to(device)
-                            # pe = (pe - pe.mean()) / pe.std()
                             pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
                             pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                             pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
                             pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                            # pe = torch.cat((pe_in, pe_out, pe), dim=1)
-                            pe = torch.cat((pe_in, pe_out), dim=1)
-                            org_scores = model(g, x, e, pe).squeeze(-1)
+                            x = torch.cat((pe_in, pe_out), dim=1)
+                            org_scores = model(g, x, e).squeeze(-1)
                             edge_predictions = org_scores
                             edge_labels = g.edata['y'].to(device)
                             
                             g = dgl.reverse(g, True, True)
-                            x = g.ndata['x'].to(device)
                             e = g.edata['e'].to(device)
-                            # pe = g.ndata['pe'].to(device)
-                            # pe = (pe - pe.mean()) / pe.std()
                             pe_out = g.ndata['in_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                             pe_out = (pe_out - pe_out.mean()) / pe_out.std()
                             pe_in = g.ndata['out_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                             pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                            # pe = torch.cat((pe_in, pe_out, pe), dim=1)
-                            pe = torch.cat((pe_in, pe_out), dim=1)
-                            rev_scores = model(g, x, e, pe).squeeze(-1)
+                            x = torch.cat((pe_in, pe_out), dim=1)
+                            rev_scores = model(g, x, e).squeeze(-1)
                             loss = symmetry_loss(org_scores, rev_scores, edge_labels, pos_weight, alpha=alpha)
                         else:
-                            x = g.ndata['x'].to(device)
+                            # x = g.ndata['x'].to(device)
                             e = g.edata['e'].to(device)
-                            # pe = g.ndata['pe'].to(device)
-                            # pe = (pe - pe.mean()) / pe.std()
                             pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
                             pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                             pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
                             pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                            # pe = torch.cat((pe_in, pe_out, pe), dim=1)
-                            pe = torch.cat((pe_in, pe_out), dim=1)
-                            edge_predictions = model(g, x, e, pe)
+                            x = torch.cat((pe_in, pe_out), dim=1)
+                            edge_predictions = model(g, x, e)
                             edge_predictions = edge_predictions.squeeze(-1)
                             edge_labels = g.edata['y'].to(device)
                             loss = criterion(edge_predictions, edge_labels)
@@ -340,25 +330,25 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             
                             if use_symmetry_loss:
                                 sub_g = sub_g.to(device)
-                                x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                 e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                 pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                 pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                org_scores = model(sub_g, x, e, pe).squeeze(-1)
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                org_scores = model(sub_g, x, e).squeeze(-1)
                                 labels = g.edata['y'][sub_g.edata['_ID']].to(device)
                                 
                                 sub_g = dgl.reverse(sub_g, True, True)
-                                x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                 e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                 pe_out = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
                                 pe_in = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                rev_scores = model(sub_g, x, e, pe).squeeze(-1)
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                rev_scores = model(sub_g, x, e).squeeze(-1)
                                 
                                 loss = symmetry_loss(org_scores, rev_scores, labels, pos_weight, alpha=alpha)
                                 edge_predictions = org_scores
@@ -366,14 +356,14 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
                             else:
                                 sub_g = sub_g.to(device)
-                                x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                 e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                 pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                 pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                edge_predictions = model(sub_g, x, e, pe) 
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                edge_predictions = model(sub_g, x, e) 
                                 edge_predictions = edge_predictions.squeeze(-1)
 
                                 edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)
@@ -521,36 +511,36 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             g = g.to(device)
 
                             if use_symmetry_loss:
-                                x = g.ndata['x'].to(device)
+                                # x = g.ndata['x'].to(device)
                                 e = g.edata['e'].to(device)
                                 pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                 pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                org_scores = model(g, x, e, pe).squeeze(-1)
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                org_scores = model(g, x, e).squeeze(-1)
                                 edge_predictions = org_scores
                                 edge_labels = g.edata['y'].to(device)
                                 
                                 g = dgl.reverse(g, True, True)
-                                x = g.ndata['x'].to(device)
+                                # x = g.ndata['x'].to(device)
                                 e = g.edata['e'].to(device)
                                 pe_out = g.ndata['in_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
                                 pe_in = g.ndata['out_deg'].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                rev_scores = model(g, x, e, pe).squeeze(-1)
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                rev_scores = model(g, x, e).squeeze(-1)
                                 loss = symmetry_loss(org_scores, rev_scores, edge_labels, pos_weight, alpha=alpha)    
                             else:
-                                x = g.ndata['x'].to(device)
+                                # x = g.ndata['x'].to(device)
                                 e = g.edata['e'].to(device)
                                 pe_in = g.ndata['in_deg'].unsqueeze(1).to(device)
                                 pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                 pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
                                 pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                pe = torch.cat((pe_in, pe_out), dim=1)
-                                edge_predictions = model(g, x, e, pe)
+                                x = torch.cat((pe_in, pe_out), dim=1)
+                                edge_predictions = model(g, x, e)
                                 edge_predictions = edge_predictions.squeeze(-1)
                                 edge_labels = g.edata['y'].to(device)
                                 loss = criterion(edge_predictions, edge_labels)
@@ -597,39 +587,39 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 
                                 if use_symmetry_loss:
                                     sub_g = sub_g.to(device)                                    
-                                    x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                     e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                     pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                     pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                     pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                     pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                    pe = torch.cat((pe_in, pe_out), dim=1)
-                                    org_scores = model(sub_g, x, e, pe).squeeze(-1)
+                                    x = torch.cat((pe_in, pe_out), dim=1)
+                                    org_scores = model(sub_g, x, e).squeeze(-1)
                                     labels = g.edata['y'][sub_g.edata['_ID']].to(device)
 
                                     sub_g = dgl.reverse(sub_g, True, True)
-                                    x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                     e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                     pe_out = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                     pe_out = (pe_out - pe_out.mean()) / pe_out.std()
                                     pe_in = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)  # Reversed edges, in/out-deg also reversed
                                     pe_in = (pe_in - pe_in.mean()) / pe_in.std()
-                                    pe = torch.cat((pe_in, pe_out), dim=1)
-                                    rev_scores = model(sub_g, x, e, pe).squeeze(-1)
+                                    x = torch.cat((pe_in, pe_out), dim=1)
+                                    rev_scores = model(sub_g, x, e).squeeze(-1)
                                     
                                     loss = symmetry_loss(org_scores, rev_scores, labels, pos_weight, alpha=alpha)
                                     edge_predictions = org_scores
                                     edge_labels = labels
                                 else:
                                     sub_g = sub_g.to(device)
-                                    x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
+                                    # x = g.ndata['x'][sub_g.ndata['_ID']].to(device)
                                     e = g.edata['e'][sub_g.edata['_ID']].to(device)
                                     pe_in = g.ndata['in_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                     pe_in = (pe_in - pe_in.mean()) / pe_in.std()
                                     pe_out = g.ndata['out_deg'][sub_g.ndata['_ID']].unsqueeze(1).to(device)
                                     pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-                                    pe = torch.cat((pe_in, pe_out), dim=1)
-                                    edge_predictions = model(sub_g, x, e, pe) 
+                                    x = torch.cat((pe_in, pe_out), dim=1)
+                                    edge_predictions = model(sub_g, x, e) 
                                     edge_predictions = edge_predictions.squeeze(-1)
                                     
                                     edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)

@@ -439,7 +439,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                     model.eval()
                     model.to(device)
                     print(f'Computing the scores with the model...\n')
-                    edge_predictions = model(g, x, e, pe)
+                    edge_predictions = model(g, x, e)
                     g.edata['score'] = edge_predictions.squeeze()
                     torch.save(g.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
 

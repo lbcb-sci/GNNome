@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 import dgl
-import dgl.function as fn
 
 import layers
 
@@ -19,9 +17,8 @@ class SymGatedGCNModel(nn.Module):
         self.gnn = layers.SymGatedGCN_processor(num_layers, hidden_features, normalization, dropout=dropout)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
-    def forward(self, graph, x, e, pe):
-        # x = self.linear_pe(pe) 
-        x = self.linear1_node(pe)
+    def forward(self, graph, x, e):
+        x = self.linear1_node(x)
         x = torch.relu(x)
         x = self.linear2_node(x)
 
@@ -46,14 +43,11 @@ class GatedGCNModel(nn.Module):
         self.gnn = layers.GatedGCN_processor(num_layers, hidden_features, normalization, dropout=dropout)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
-    def forward(self, graph, x, e, pe):
-        # x = self.linear_pe(pe) 
-        x = self.linear1_node(pe)
+    def forward(self, graph, x, e):
+        x = self.linear1_node(x)
         x = torch.relu(x)
         x = self.linear2_node(x)
         
-        e = torch.cat((e, e), dim=0)
-
         e = self.linear1_edge(e)
         e = torch.relu(e)
         e = self.linear2_edge(e)
@@ -80,8 +74,8 @@ class GCNModel(nn.Module):
         self.gnn = layers.GCN_processor(num_layers, hidden_features)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
-    def forward(self, graph, x, e, pe):
-        x = self.linear1_node(pe)
+    def forward(self, graph, x, e):
+        x = self.linear1_node(x)
         x = torch.relu(x)
         x = self.linear2_node(x)
 
@@ -111,8 +105,8 @@ class GATModel(nn.Module):
         self.gnn = layers.GAT_processor(num_layers, hidden_features, dropout=dropout, num_heads=3)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
-    def forward(self, graph, x, e, pe):       
-        x = self.linear1_node(pe)
+    def forward(self, graph, x, e):       
+        x = self.linear1_node(x)
         x = torch.relu(x)
         x = self.linear2_node(x)
 
@@ -142,8 +136,8 @@ class SAGEModel(nn.Module):
         self.gnn = layers.SAGE_processor(num_layers, hidden_features, dropout=dropout)
         self.predictor = layers.ScorePredictor(hidden_features, hidden_edge_scores)
 
-    def forward(self, graph, x, e, pe):
-        x = self.linear1_node(pe)
+    def forward(self, graph, x, e):
+        x = self.linear1_node(x)
         x = torch.relu(x)
         x = self.linear2_node(x)
 
