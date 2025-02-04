@@ -6,9 +6,7 @@ import re
 
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-# from torch.profiler import profile, record_function, ProfilerActivity
 import dgl
 import wandb
 
@@ -148,9 +146,9 @@ def get_bce_loss_full(g, model, pos_weight, device):
     x, e = x.to(device), e.to(device)
     logits = model(g, x, e)
     logits = logits.squeeze(-1)
-    edge_labels = g.edata['y'].to(device)
+    labels = g.edata['y'].to(device)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    loss = criterion(logits, edge_labels)
+    loss = criterion(logits, labels)
     return loss, logits
 
 
@@ -160,9 +158,9 @@ def get_bce_loss_partition(sub_g, g, model, pos_weight, device):
     x, e = x.to(device), e.to(device)
     logits = model(sub_g, x, e) 
     logits = logits.squeeze(-1)
-    edge_labels = g.edata['y'][sub_g.edata['_ID']].to(device)
+    labels = g.edata['y'][sub_g.edata['_ID']].to(device)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    loss = criterion(logits, edge_labels)
+    loss = criterion(logits, labels)
     return loss, logits  # TODO: This should only return logits, loss compute outside
 
 
@@ -170,13 +168,13 @@ def get_symmetry_loss_full(g, model, pos_weight, alpha, device):
     x, e = get_full_ne_features(g, reverse=False)
     x, e = x.to(device), e.to(device)
     logits_org = model(g, x, e).squeeze(-1)
-    edge_labels = g.edata['y'].to(device)
+    labels = g.edata['y'].to(device)
     
     g = dgl.reverse(g, True, True)
     x, e = get_full_ne_features(g, reverse=True)
     x, e = x.to(device), e.to(device)
     logits_rev = model(g, x, e).squeeze(-1)
-    loss = symmetry_loss(logits_org, logits_rev, edge_labels, pos_weight, alpha=alpha)
+    loss = symmetry_loss(logits_org, logits_rev, labels, pos_weight, alpha=alpha)
     return loss, logits_org
 
 
@@ -215,8 +213,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     wandb_mode = hyperparameters['wandb_mode']
     wandb_project = hyperparameters['wandb_project']
     num_nodes_per_cluster = hyperparameters['num_nodes_per_cluster']
-    npc_lower_bound = hyperparameters['npc_lower_bound']
-    npc_upper_bound = hyperparameters['npc_upper_bound']
     k_extra_hops = hyperparameters['k_extra_hops']
     masking = hyperparameters['masking']
     mask_frac_low = hyperparameters['mask_frac_low']
@@ -229,7 +225,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     models_path = os.path.abspath(config['models_path'])
     
     if gpu:
-        # GPU as an option to the train.py script
+        # GPU as an argument to the train.py script
         # Otherwise, take the device from hyperparameters.py
         device = f'cuda:{gpu}'
     if torch.cuda.is_available():
@@ -337,11 +333,9 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         fraction = random.randint(mask_frac_low, mask_frac_high) / 100  # Fraction of nodes to be left in the graph (.85 -> ~30x, 1.0 -> 60x)
                         g = mask_graph_strandwise(g, fraction, device)
 
-                    # Number of clusters dependant on graph size!
-                    num_nodes_per_cluster_min = int(num_nodes_per_cluster * npc_lower_bound)
-                    num_nodes_per_cluster_max = int(num_nodes_per_cluster * npc_upper_bound) + 1
-                    num_nodes_for_g = torch.LongTensor(1).random_(num_nodes_per_cluster_min, num_nodes_per_cluster_max).item()
-                    num_clusters = g.num_nodes() // num_nodes_for_g + 1
+                    # Determine whether to partition or not
+                    num_nodes_for_g = num_nodes_per_cluster
+                    num_clusters = g.num_nodes() // num_nodes_per_cluster + 1
 
                     if num_nodes_for_g >= g.num_nodes(): # train with full graph
                         print(f'\nUse METIS: False')
@@ -413,10 +407,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             fraction = random.randint(mask_frac_low, mask_frac_high) / 100  # Fraction of nodes to be left in the graph (.85 -> ~30x, 1.0 -> 60x)
                             g = mask_graph_strandwise(g, fraction, device)
                         
-                        # Number of clusters dependant on graph size!
-                        num_nodes_per_cluster_min = int(num_nodes_per_cluster * npc_lower_bound)
-                        num_nodes_per_cluster_max = int(num_nodes_per_cluster * npc_upper_bound) + 1
-                        num_nodes_for_g = torch.LongTensor(1).random_(num_nodes_per_cluster_min, num_nodes_per_cluster_max).item() # TODO: Obsolete - refactor!!!
+                        # Determine whether to partition or not
+                        num_nodes_for_g = num_nodes_per_cluster
                         num_clusters = g.num_nodes() // num_nodes_for_g + 1
                         
                         if num_nodes_for_g >= g.num_nodes(): # full graph

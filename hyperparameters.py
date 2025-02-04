@@ -8,9 +8,10 @@ def get_hyperparameters():
         'wandb_mode': 'disabled',  # switch between 'online' and 'disabled'
         'wandb_project': 'GNNome',
 
+        # Assembly during training
         'chr_overfit': 0,
         'plot_nga50_during_training': False,
-        'eval_frequency': 20, 
+        'eval_frequency': 20,
 
         # Data
         'use_similarities': True,
@@ -24,19 +25,15 @@ def get_hyperparameters():
         'hidden_edge_scores': 64,
         'nb_pos_enc': 0,
         'type_pos_enc': 'none',
-        'batch_norm': True,
+        'normalization': 'batch',
         # 'dropout': 0.08,
 
         # Training
-        'num_epochs': 200,
+        'num_epochs': 5,
         'lr': 1e-4,
         'use_symmetry_loss': True,
         'alpha': 0.1,
-        'num_parts_metis_train': 200,
-        'num_parts_metis_eval': 200,
         'num_nodes_per_cluster': 10000,  # 2000 = max 10GB GPU memory for d=128, L=8
-        'npc_lower_bound': 1,  # 0.8
-        'npc_upper_bound': 1,  # 1.2
         'k_extra_hops': 1,
         'patience': 2,
         'decay': 0.95,

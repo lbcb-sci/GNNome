@@ -164,7 +164,7 @@ def run_greedy_both_ways(src, dst, logProbs, succs, preds, edges, visited):
     return walk_f, walk_b, visited_f, visited_b, sumLogProb_f, sumLogProb_b
 
 
-def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
+def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, use_labels=False, checkpoint_dir=None, load_checkpoint=False):
     """Iteratively search for contigs in a graph until the threshold is met."""
     g = g.to('cpu')
     all_contigs = []
@@ -184,7 +184,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         logProbs = torch.log(torch.sigmoid(g.edata['score'].to('cpu')))
 
     print(f'Starting to decode with greedy...')
-    print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
+    print(f'num_candidates: {nb_paths}\n')
 
     ckpt_file = os.path.join(checkpoint_dir, 'checkpoint.pkl')
     if load_checkpoint and os.path.isfile(ckpt_file):
@@ -465,7 +465,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         g.edata['prefix_length'] = g.edata['prefix_length'].masked_fill(g.edata['prefix_length']<0, 0)
         
         if strategy == 'greedy':
-            walks = get_contigs_greedy(g, succs, preds, edges, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
+            walks = get_contigs_greedy(g, succs, preds, edges, nb_paths, use_labels, checkpoint_dir, load_checkpoint)
         else:
             print('Invalid decoding strategy')
             raise Exception
