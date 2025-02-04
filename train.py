@@ -16,8 +16,48 @@ from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 from config import get_config
 import models
-import utils
+import utils.utils as utils
+import utils.metrics as metrics
 from inference import inference
+
+
+def compute_fp_fn_rates(TP, TN, FP, FN):
+    """Compute False Positive Rate and False Negative Rate, handling division by zero."""
+    fp_rate = FP / (FP + TN) if (FP + TN) != 0 else 0.0
+    fn_rate = FN / (FN + TP) if (FN + TP) != 0 else 0.0
+    return fp_rate, fn_rate
+    
+
+def compute_metrics_partition(logits, labels, loss):
+    """Compute all relevant metrics and store them in epoch lists."""
+    TP, TN, FP, FN = metrics.calculate_tfpn(logits, labels)
+    
+    acc, precision, recall, f1 = metrics.calculate_metrics(TP, TN, FP, FN)
+    acc_inv, precision_inv, recall_inv, f1_inv = metrics.calculate_metrics_inverse(TP, TN, FP, FN)
+    
+    fp_rate, fn_rate = compute_fp_fn_rates(TP, TN, FP, FN)
+
+    # Append metrics to respective lists
+    epoch_metrics_partition = {
+        "loss_epoch": loss.item(),
+        "fp_rate_epoch": fp_rate,
+        "fn_rate_epoch": fn_rate,
+        "acc_epoch": acc,
+        "precision_epoch": precision,
+        "recall_epoch": recall,
+        "f1_epoch": f1,
+        "acc_inv_epoch": acc_inv,
+        "precision_inv_epoch": precision_inv,
+        "recall_inv_epoch": recall_inv,
+        "f1_inv_epoch": f1_inv,
+    }
+
+    return epoch_metrics_partition
+
+
+def average_epoch_metrics(metrics_dict):
+    """Compute the mean for each metric across all partitions in an epoch."""
+    return {key: np.mean(values) for key, values in metrics_dict.items()}
 
 
 def save_checkpoint(epoch, model, optimizer, loss_train, loss_valid, out, ckpt_path):
@@ -232,7 +272,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     start_epoch = 0
 
     loss_per_epoch_train, loss_per_epoch_valid = [], []
-    f1_inv_per_epoch_valid = []
 
     if not os.path.exists(checkpoints_path):
         os.makedirs(checkpoints_path)
@@ -287,12 +326,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
             wandb.watch(model, criterion, log='all', log_freq=1000)
 
             for epoch in range(start_epoch, num_epochs):
-                
-                train_loss_epoch, train_fp_rate_epoch, train_fn_rate_epoch = [], [], []
-                train_acc_epoch, train_precision_epoch, train_recall_epoch, train_f1_epoch = [], [], [], []
-                train_acc_inv_epoch, train_precision_inv_epoch, train_recall_inv_epoch, train_f1_inv_epoch = [], [], [], []
 
                 print('\n===> TRAINING\n')
+
+                epoch_metrics_list_train = []
+
                 random.shuffle(ds_train.graph_list)
                 for data in ds_train:
                     model.train()
@@ -324,20 +362,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                        TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
-                        acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
-                        try:
-                            fp_rate = FP / (FP + TN)
-                        except ZeroDivisionError:
-                            fp_rate = 0.0
-                        try:
-                            fn_rate = FN / (FN + TP)
-                        except ZeroDivisionError:
-                            fn_rate = 0.0
-                        
-                        train_loss_epoch.append(loss.item())
-                        train_fp_rate_epoch.append(fp_rate)
-                        train_fn_rate_epoch.append(fn_rate)
+
+                        epoch_metrics_list_train.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
 
                         # elapsed = utils.timedelta_to_str(datetime.now() - time_start)
                         # print(f'\nTRAINING (one training graph): Epoch = {epoch}, Graph = {idx}')
@@ -364,50 +390,22 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             loss.backward()
                             optimizer.step()
 
-                            # TODO: How to handle edge_predictions?
-                            TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
-                            acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
-                            acc_inv, precision_inv, recall_inv, f1_inv =  utils.calculate_metrics_inverse(TP, TN, FP, FN)
-                            
-                            try:
-                                fp_rate = FP / (FP + TN)
-                            except ZeroDivisionError:
-                                fp_rate = 0.0
-                            try:
-                                fn_rate = FN / (FN + TP)
-                            except ZeroDivisionError:
-                                fn_rate = 0.0
-                            
-                            # These are used for epoch mean = mean over all the partitions in all the graphs
-                            train_loss_epoch.append(loss.item())
-                            train_fp_rate_epoch.append(fp_rate)
-                            train_fn_rate_epoch.append(fn_rate)
-                            train_acc_epoch.append(acc)
-                            train_precision_epoch.append(precision)
-                            train_recall_epoch.append(recall)
-                            train_f1_epoch.append(f1)
-                            
-                            # Inverse metrics because F1 and them are not good for dataset with mostly positive labels
-                            train_acc_inv_epoch.append(acc_inv)
-                            train_precision_inv_epoch.append(precision_inv)
-                            train_recall_inv_epoch.append(recall_inv)
-                            train_f1_inv_epoch.append(f1_inv)
+                            epoch_metrics_list_train.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
 
-                        exit(0)
-                
-                # Average over all the partitions in one epoch
-                train_loss_epoch = np.mean(train_loss_epoch)
-                train_fp_rate_epoch = np.mean(train_fp_rate_epoch)
-                train_fn_rate_epoch = np.mean(train_fn_rate_epoch)
-                train_acc_epoch = np.mean(train_acc_epoch)
-                train_precision_epoch = np.mean(train_precision_epoch)
-                train_recall_epoch = np.mean(train_recall_epoch)
-                train_f1_epoch = np.mean(train_f1_epoch)
-                
-                train_acc_inv_epoch = np.mean(train_acc_inv_epoch)
-                train_precision_inv_epoch = np.mean(train_precision_inv_epoch)
-                train_recall_inv_epoch = np.mean(train_recall_inv_epoch)
-                train_f1_inv_epoch = np.mean(train_f1_inv_epoch)
+                aggregated_metrics = {key: [metrics[key] for metrics in epoch_metrics_list_train] for key in epoch_metrics_list_train[0]}  # Iterate over the metrics
+                epoch_mean_metrics_train = average_epoch_metrics(aggregated_metrics)  # Average over the partitions / full graphs
+
+                train_loss_epoch = epoch_mean_metrics_train["loss_epoch"]
+                train_fp_rate_epoch = epoch_mean_metrics_train["fp_rate_epoch"]
+                train_fn_rate_epoch = epoch_mean_metrics_train["fn_rate_epoch"]
+                train_acc_epoch = epoch_mean_metrics_train["acc_epoch"]
+                train_precision_epoch = epoch_mean_metrics_train["precision_epoch"]
+                train_recall_epoch = epoch_mean_metrics_train["recall_epoch"]
+                train_f1_epoch = epoch_mean_metrics_train["f1_epoch"]
+                train_acc_inv_epoch = epoch_mean_metrics_train["acc_inv_epoch"]
+                train_precision_inv_epoch = epoch_mean_metrics_train["precision_inv_epoch"]
+                train_recall_inv_epoch = epoch_mean_metrics_train["recall_inv_epoch"]
+                train_f1_inv_epoch = epoch_mean_metrics_train["f1_inv_epoch"]
 
                 loss_per_epoch_train.append(train_loss_epoch)
                 lr_value = optimizer.param_groups[0]['lr']
@@ -429,14 +427,13 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                'train_fp-rate': train_fp_rate_epoch, 'train_fn-rate': train_fn_rate_epoch})
 
                     continue  # This will entirely skip the validation
-                
-                valid_loss_epoch, valid_fp_rate_epoch, valid_fn_rate_epoch = [], [], []
-                valid_acc_epoch, valid_precision_epoch, valid_recall_epoch, valid_f1_epoch = [], [], [], []
-                valid_acc_inv_epoch, valid_precision_inv_epoch, valid_recall_inv_epoch, valid_f1_inv_epoch = [], [], [], []
 
                 with torch.no_grad():
                     print('\n===> VALIDATION\n')
                     # time_start_eval = datetime.now()
+
+                    epoch_metrics_list_valid = []
+
                     model.eval()
                     for data in ds_valid:
                         idx, g = data
@@ -450,7 +447,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         # Number of clusters dependant on graph size!
                         num_nodes_per_cluster_min = int(num_nodes_per_cluster * npc_lower_bound)
                         num_nodes_per_cluster_max = int(num_nodes_per_cluster * npc_upper_bound) + 1
-                        num_nodes_for_g = torch.LongTensor(1).random_(num_nodes_per_cluster_min, num_nodes_per_cluster_max).item() # DEBUG!!!
+                        num_nodes_for_g = torch.LongTensor(1).random_(num_nodes_per_cluster_min, num_nodes_per_cluster_max).item() # TODO: Obsolete - refactor!!!
                         num_clusters = g.num_nodes() // num_nodes_for_g + 1
                         
                         if num_nodes_for_g >= g.num_nodes(): # full graph
@@ -464,20 +461,8 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 loss, logits = get_bce_loss_full(g, model, pos_weight, device)
 
                             labels = g.edata['y'].to(device)
-                            TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
-                            acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
-                            try:
-                                fp_rate = FP / (FP + TN)
-                            except ZeroDivisionError:
-                                fp_rate = 0.0
-                            try:
-                                fn_rate = FN / (FN + TP)
-                            except ZeroDivisionError:
-                                fn_rate = 0.0
-                            
-                            valid_loss_epoch.append(loss.item())
-                            valid_fp_rate_epoch.append(fp_rate)
-                            valid_fn_rate_epoch.append(fn_rate)
+
+                            epoch_metrics_list_valid.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
 
                             # elapsed = utils.timedelta_to_str(datetime.now() - time_start_eval)
                             # print(f'\nVALIDATION (one validation graph): Epoch = {epoch}, Graph = {idx}')
@@ -499,50 +484,25 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                     loss, logits = get_bce_loss_partition(sub_g, g, model, pos_weight, device)
 
                                 labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-                                TP, TN, FP, FN = utils.calculate_tfpn(logits, labels)
-                                acc, precision, recall, f1 =  utils.calculate_metrics(TP, TN, FP, FN)
-                                acc_inv, precision_inv, recall_inv, f1_inv =  utils.calculate_metrics_inverse(TP, TN, FP, FN)
-                                
-                                try:
-                                    fp_rate = FP / (FP + TN)
-                                except ZeroDivisionError:
-                                    fp_rate = 0.0
-                                try:
-                                    fn_rate = FN / (FN + TP)
-                                except ZeroDivisionError:
-                                    fn_rate = 0.0
-                                
-                                # These are used for epoch mean = mean over all the partitions in all the graphs
-                                valid_loss_epoch.append(loss.item())
-                                valid_fp_rate_epoch.append(fp_rate)
-                                valid_fn_rate_epoch.append(fn_rate)
-                                valid_acc_epoch.append(acc)
-                                valid_precision_epoch.append(precision)
-                                valid_recall_epoch.append(recall)
-                                valid_f1_epoch.append(f1)
-                                
-                                # Inverse metrics because F1 and them are not good for dataset with mostly positive labels
-                                valid_acc_inv_epoch.append(acc_inv)
-                                valid_precision_inv_epoch.append(precision_inv)
-                                valid_recall_inv_epoch.append(recall_inv)
-                                valid_f1_inv_epoch.append(f1_inv)
-                    
-                    # Average over all the partitions in one epoch
-                    valid_loss_epoch = np.mean(valid_loss_epoch)
-                    valid_fp_rate_epoch = np.mean(valid_fp_rate_epoch)
-                    valid_fn_rate_epoch = np.mean(valid_fn_rate_epoch)
-                    valid_acc_epoch = np.mean(valid_acc_epoch)
-                    valid_precision_epoch = np.mean(valid_precision_epoch)
-                    valid_recall_epoch = np.mean(valid_recall_epoch)
-                    valid_f1_epoch = np.mean(valid_f1_epoch)
 
-                    valid_acc_inv_epoch = np.mean(valid_acc_inv_epoch)
-                    valid_precision_inv_epoch = np.mean(valid_precision_inv_epoch)
-                    valid_recall_inv_epoch = np.mean(valid_recall_inv_epoch)
-                    valid_f1_inv_epoch = np.mean(valid_f1_inv_epoch)
+                                epoch_metrics_list_valid.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
+                    
+                    aggregated_metrics = {key: [metrics[key] for metrics in epoch_metrics_list_valid] for key in epoch_metrics_list_valid[0]}  # Iterate over the metrics
+                    epoch_mean_metrics_valid = average_epoch_metrics(aggregated_metrics)  # Average over the partitions / full graphs
+
+                    valid_loss_epoch = epoch_mean_metrics_valid["loss_epoch"]
+                    valid_fp_rate_epoch = epoch_mean_metrics_valid["fp_rate_epoch"]
+                    valid_fn_rate_epoch = epoch_mean_metrics_valid["fn_rate_epoch"]
+                    valid_acc_epoch = epoch_mean_metrics_valid["acc_epoch"]
+                    valid_precision_epoch = epoch_mean_metrics_valid["precision_epoch"]
+                    valid_recall_epoch = epoch_mean_metrics_valid["recall_epoch"]
+                    valid_f1_epoch = epoch_mean_metrics_valid["f1_epoch"]
+                    valid_acc_inv_epoch = epoch_mean_metrics_valid["acc_inv_epoch"]
+                    valid_precision_inv_epoch = epoch_mean_metrics_valid["precision_inv_epoch"]
+                    valid_recall_inv_epoch = epoch_mean_metrics_valid["recall_inv_epoch"]
+                    valid_f1_inv_epoch = epoch_mean_metrics_valid["f1_inv_epoch"]
 
                     loss_per_epoch_valid.append(valid_loss_epoch)
-                    f1_inv_per_epoch_valid.append(valid_f1_inv_epoch)
 
                     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
                     print(f'\n==> VALIDATION (all validation graphs): Epoch = {epoch}')
