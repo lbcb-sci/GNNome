@@ -1,7 +1,5 @@
 import gzip
-import os
 import re
-import time
 from collections import Counter, namedtuple
 from datetime import datetime
 
@@ -9,11 +7,10 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 import dgl
 import networkx as nx
-import torch
 import edlib
 from tqdm import tqdm
 
-import algorithms
+import utils.labels
 
 
 # Overlap = namedtuple('Overlap', ['src_len', 'src_start', 'src_end', 'dst_len', 'dst_start', 'dst_end'])
@@ -396,9 +393,9 @@ def only_from_gfa(gfa_path, training=False, reads_path=None, get_similarities=Fa
 
         unqique_chrs = set(read_chrs.values())
         if len(unqique_chrs) == 1:
-            ms_pos, labels = algorithms.process_graph(graph_nx)
+            ms_pos, labels = utils.labels.process_graph(graph_nx)
         else:
-            ms_pos, labels = algorithms.process_graph_combo(graph_nx)
+            ms_pos, labels = utils.labels.process_graph_combo(graph_nx)
         nx.set_edge_attributes(graph_nx, labels, 'y')
         edge_attrs.append('y')
 
