@@ -20,7 +20,7 @@ from graph_dataset import AssemblyGraphDataset
 from hyperparameters import get_hyperparameters
 import models
 import evaluate
-import utils
+import utils.utils as utils
 
 DEBUG = False
 RANDOM = False

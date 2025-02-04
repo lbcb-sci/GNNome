@@ -36,3 +36,22 @@ def assert_overlap(graph, walk):
             print(f'walk index: {idx}')
             print(f'nodes not connected: {src}, {dst}')
             print(f'end: {src_start}, start: {dst_end}')
+
+
+def print_graph_info(idx, graph):
+    """Print the basic information for the graph with index idx."""
+    print('\n---- GRAPH INFO ----')
+    print('Graph index:', idx)
+    print('Number of nodes:', graph.num_nodes())
+    print('Number of edges:', len(graph.edges()[0]))
+
+
+def print_prediction(walk, current, neighbors, actions, choice, best_neighbor):
+    """Print summary of the prediction for the current position."""
+    print('\n-----predicting-----')
+    print('previous:\t', None if len(walk) < 2 else walk[-2])
+    print('current:\t', current)
+    print('neighbors:\t', neighbors[current])
+    print('actions:\t', actions.tolist())
+    print('choice:\t\t', choice)
+    print('ground truth:\t', best_neighbor)
