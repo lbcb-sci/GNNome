@@ -28,7 +28,7 @@ def compute_fp_fn_rates(TP, TN, FP, FN):
     return fp_rate, fn_rate
     
 
-def compute_metrics_partition(logits, labels, loss):
+def compute_metrics(logits, labels, loss):
     """Compute all relevant metrics and store them in epoch lists."""
     TP, TN, FP, FN = metrics.calculate_tfpn(logits, labels)
     
@@ -39,17 +39,17 @@ def compute_metrics_partition(logits, labels, loss):
 
     # Append metrics to respective lists
     epoch_metrics_partition = {
-        "loss_epoch": loss.item(),
-        "fp_rate_epoch": fp_rate,
-        "fn_rate_epoch": fn_rate,
-        "acc_epoch": acc,
-        "precision_epoch": precision,
-        "recall_epoch": recall,
-        "f1_epoch": f1,
-        "acc_inv_epoch": acc_inv,
-        "precision_inv_epoch": precision_inv,
-        "recall_inv_epoch": recall_inv,
-        "f1_inv_epoch": f1_inv,
+        "loss": loss,
+        "fp_rate": fp_rate,
+        "fn_rate": fn_rate,
+        "acc": acc,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "acc_inv": acc_inv,
+        "precision_inv": precision_inv,
+        "recall_inv": recall_inv,
+        "f1_inv": f1_inv,
     }
 
     return epoch_metrics_partition
@@ -324,20 +324,15 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     try:
         with wandb.init(project=wandb_project, config=hyperparameters, mode=wandb_mode, name=out):
             wandb.watch(model, criterion, log='all', log_freq=1000)
-
             for epoch in range(start_epoch, num_epochs):
-
-                print('\n===> TRAINING\n')
-
+                print('\n===> TRAINING')
                 epoch_metrics_list_train = []
-
                 random.shuffle(ds_train.graph_list)
                 for data in ds_train:
                     model.train()
                     idx, g = data
 
                     print(f'\n(TRAIN: Epoch = {epoch:3}) NEW GRAPH: index = {idx}')
-
                     if masking:
                         fraction = random.randint(mask_frac_low, mask_frac_high) / 100  # Fraction of nodes to be left in the graph (.85 -> ~30x, 1.0 -> 60x)
                         g = mask_graph_strandwise(g, fraction, device)
@@ -352,23 +347,15 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         print(f'\nUse METIS: False')
                         print(f'Use full graph')
                         g = g.to(device)
-
                         if use_symmetry_loss:
                             loss, logits = get_symmetry_loss_full(g, model, pos_weight, alpha, device)
                         else:
                             loss, logits = get_bce_loss_full(g, model, pos_weight, device)
-
                         labels = g.edata['y'].to(device)
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-
-                        epoch_metrics_list_train.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
-
-                        # elapsed = utils.timedelta_to_str(datetime.now() - time_start)
-                        # print(f'\nTRAINING (one training graph): Epoch = {epoch}, Graph = {idx}')
-                        # print(f'Loss: {train_loss:.4f}, fp_rate(GT=0): {train_fp_rate:.4f}, fn_rate(GT=1): {train_fn_rate:.4f}')
-                        # print(f'elapsed time: {elapsed}\n\n')
+                        epoch_metrics_list_train.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
 
                     else: # train with mini-batch
                         print(f'\nUse METIS: True')
@@ -383,63 +370,45 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                                 loss, logits = get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device)
                             else:
                                 loss, logits = get_bce_loss_partition(sub_g, g, model, pos_weight, device)
-
                             labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-
                             optimizer.zero_grad()
                             loss.backward()
                             optimizer.step()
-
-                            epoch_metrics_list_train.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
-
+                            epoch_metrics_list_train.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
+                            
                 aggregated_metrics = {key: [metrics[key] for metrics in epoch_metrics_list_train] for key in epoch_metrics_list_train[0]}  # Iterate over the metrics
                 epoch_mean_metrics_train = average_epoch_metrics(aggregated_metrics)  # Average over the partitions / full graphs
 
-                train_loss_epoch = epoch_mean_metrics_train["loss_epoch"]
-                train_fp_rate_epoch = epoch_mean_metrics_train["fp_rate_epoch"]
-                train_fn_rate_epoch = epoch_mean_metrics_train["fn_rate_epoch"]
-                train_acc_epoch = epoch_mean_metrics_train["acc_epoch"]
-                train_precision_epoch = epoch_mean_metrics_train["precision_epoch"]
-                train_recall_epoch = epoch_mean_metrics_train["recall_epoch"]
-                train_f1_epoch = epoch_mean_metrics_train["f1_epoch"]
-                train_acc_inv_epoch = epoch_mean_metrics_train["acc_inv_epoch"]
-                train_precision_inv_epoch = epoch_mean_metrics_train["precision_inv_epoch"]
-                train_recall_inv_epoch = epoch_mean_metrics_train["recall_inv_epoch"]
-                train_f1_inv_epoch = epoch_mean_metrics_train["f1_inv_epoch"]
-
+                train_loss_epoch = epoch_mean_metrics_train["loss"]
+                train_fp_rate_epoch = epoch_mean_metrics_train["fp_rate"]
+                train_fn_rate_epoch = epoch_mean_metrics_train["fn_rate"]
+                train_f1_epoch = epoch_mean_metrics_train["f1"]
+                train_f1_inv_epoch = epoch_mean_metrics_train["f1_inv"]
                 loss_per_epoch_train.append(train_loss_epoch)
                 lr_value = optimizer.param_groups[0]['lr']
-                
-                elapsed = utils.timedelta_to_str(datetime.now() - time_start)
-                print(f'\n==> TRAINING (all training graphs): Epoch = {epoch}')
-                print(f'Loss: {train_loss_epoch:.4f}, fp_rate(GT=0): {train_fp_rate_epoch:.4f}, fn_rate(GT=1): {train_fn_rate_epoch:.4f}')
-                print(f'Elapsed time: {elapsed}\n\n')
 
                 if overfit:
-                    if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_train) > 1 and loss_per_epoch_train[-1] < min(loss_per_epoch_train[:-1]):
+                    if len(loss_per_epoch_valid) == 1 or loss_per_epoch_train[-1] < min(loss_per_epoch_train[:-1]):
                         torch.save(model.state_dict(), model_path)
-                        print(f'Epoch {epoch}: Model saved!')
-                    save_checkpoint(epoch, model, optimizer, loss_per_epoch_train[-1], 0.0, out, ckpt_path)
+                        print(f'\nEpoch {epoch:3}: Model saved (overfitting)! -> Train Loss = {train_loss_epoch:.6f}' \
+                              f'\nTrain  F1 = {train_f1_epoch:.4f}\tTrain inv-F1 = {train_f1_inv_epoch:.4f}' \
+                              f'\nTrain FPR = {train_fp_rate_epoch:.4f}\tTrain FNR = {train_fn_rate_epoch:.4f}\n')
+                    save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), 0.0, out, ckpt_path)
                     scheduler.step(train_loss_epoch)
-                    wandb.log({'train_loss': train_loss_epoch, 'train_accuracy': train_acc_epoch, \
-                               'train_precision': train_precision_epoch, 'lr_value': lr_value, \
-                               'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
-                               'train_fp-rate': train_fp_rate_epoch, 'train_fn-rate': train_fn_rate_epoch})
-
+                    log_data = {f"train/{key}": value for key, value in epoch_mean_metrics_train.items()}
+                    log_data['lr_value'] = lr_value
+                    wandb.log(log_data)
                     continue  # This will entirely skip the validation
 
                 with torch.no_grad():
-                    print('\n===> VALIDATION\n')
+                    print('\n===> VALIDATION')
                     # time_start_eval = datetime.now()
-
                     epoch_metrics_list_valid = []
-
                     model.eval()
                     for data in ds_valid:
                         idx, g = data
-                        
+
                         print(f'\n(VALID Epoch = {epoch:3}) NEW GRAPH: index = {idx}')
-                        
                         if masking:
                             fraction = random.randint(mask_frac_low, mask_frac_high) / 100  # Fraction of nodes to be left in the graph (.85 -> ~30x, 1.0 -> 60x)
                             g = mask_graph_strandwise(g, fraction, device)
@@ -454,81 +423,48 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             print(f'\nUse METIS: False')
                             print(f'Use full graph')
                             g = g.to(device)
-
                             if use_symmetry_loss:
                                 loss, logits = get_symmetry_loss_full(g, model, pos_weight, alpha, device)
                             else:
                                 loss, logits = get_bce_loss_full(g, model, pos_weight, device)
-
                             labels = g.edata['y'].to(device)
-
-                            epoch_metrics_list_valid.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
-
-                            # elapsed = utils.timedelta_to_str(datetime.now() - time_start_eval)
-                            # print(f'\nVALIDATION (one validation graph): Epoch = {epoch}, Graph = {idx}')
-                            # print(f'Loss: {val_loss:.4f}, fp_rate(GT=0): {val_fp_rate:.4f}, fn_rate(GT=1): {val_fn_rate:.4f}')
-                            # print(f'elapsed time: {elapsed}\n\n')
+                            epoch_metrics_list_valid.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
 
                         else: # mini-batch
                             print(f'\nNum clusters:', num_clusters)
                             g = g.long()
                             d = dgl.metis_partition(g, num_clusters, extra_cached_hops=k_extra_hops)
                             sub_gs = list(d.values())
-                            # g = g.to(device)
-                            
                             for sub_g in sub_gs:
-                                
                                 if use_symmetry_loss:
                                     loss, logits = get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device)
                                 else:
                                     loss, logits = get_bce_loss_partition(sub_g, g, model, pos_weight, device)
-
                                 labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-
-                                epoch_metrics_list_valid.append(compute_metrics_partition(logits, labels, loss))  # Append with a dict for each partition in the dataset
+                                epoch_metrics_list_valid.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
                     
                     aggregated_metrics = {key: [metrics[key] for metrics in epoch_metrics_list_valid] for key in epoch_metrics_list_valid[0]}  # Iterate over the metrics
                     epoch_mean_metrics_valid = average_epoch_metrics(aggregated_metrics)  # Average over the partitions / full graphs
 
-                    valid_loss_epoch = epoch_mean_metrics_valid["loss_epoch"]
-                    valid_fp_rate_epoch = epoch_mean_metrics_valid["fp_rate_epoch"]
-                    valid_fn_rate_epoch = epoch_mean_metrics_valid["fn_rate_epoch"]
-                    valid_acc_epoch = epoch_mean_metrics_valid["acc_epoch"]
-                    valid_precision_epoch = epoch_mean_metrics_valid["precision_epoch"]
-                    valid_recall_epoch = epoch_mean_metrics_valid["recall_epoch"]
-                    valid_f1_epoch = epoch_mean_metrics_valid["f1_epoch"]
-                    valid_acc_inv_epoch = epoch_mean_metrics_valid["acc_inv_epoch"]
-                    valid_precision_inv_epoch = epoch_mean_metrics_valid["precision_inv_epoch"]
-                    valid_recall_inv_epoch = epoch_mean_metrics_valid["recall_inv_epoch"]
-                    valid_f1_inv_epoch = epoch_mean_metrics_valid["f1_inv_epoch"]
-
-                    loss_per_epoch_valid.append(valid_loss_epoch)
-
-                    elapsed = utils.timedelta_to_str(datetime.now() - time_start)
-                    print(f'\n==> VALIDATION (all validation graphs): Epoch = {epoch}')
-                    print(f'Loss: {valid_loss_epoch:.4f}, fp_rate(GT=0): {valid_fp_rate_epoch:.4f}, fn_rate(GT=1): {valid_fn_rate_epoch:.4f}')
-                    print(f'Elapsed time total: {elapsed}\n\n')
+                    valid_loss_epoch = epoch_mean_metrics_valid["loss"]
+                    valid_fp_rate_epoch = epoch_mean_metrics_valid["fp_rate"]
+                    valid_fn_rate_epoch = epoch_mean_metrics_valid["fn_rate"]
+                    valid_f1_epoch = epoch_mean_metrics_valid["f1"]
+                    valid_f1_inv_epoch = epoch_mean_metrics_valid["f1_inv"]
+                    loss_per_epoch_valid.append(epoch_mean_metrics_valid["loss"])
 
                     if not overfit:
-                        if finetune:
-                            if (epoch+1) % 50 == 0:
-                                model_tmp_path = os.path.join(models_path, f'finetune-model-epoch{epoch}_{out}.pt')
-                                torch.save(model.state_dict(), model_tmp_path)
-                            # Choose the model with minimal loss on validation set
-                            if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_valid) > 1 and loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
-                                torch.save(model.state_dict(), model_path)
-                                print(f'Epoch {epoch:3}: Model MIN-LOSS saved! -> Val Loss = {valid_loss_epoch:.6f}\tVal F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
-                                    f'\tVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\t')
-                            save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
-                            scheduler.step(valid_loss_epoch)
-                        else:
-                            # Choose the model with minimal loss on validation set
-                            if len(loss_per_epoch_valid) == 1 or len(loss_per_epoch_valid) > 1 and loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
-                                torch.save(model.state_dict(), model_path)
-                                print(f'Epoch {epoch:3}: Model MIN-LOSS saved! -> Val Loss = {valid_loss_epoch:.6f}\tVal F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
-                                    f'\tVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\t')
-                            save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
-                            scheduler.step(valid_loss_epoch)
+                        if finetune and (epoch+1) % 50 == 0:
+                            model_tmp_path = os.path.join(models_path, f'finetune-model-epoch{epoch}_{out}.pt')
+                            torch.save(model.state_dict(), model_tmp_path)
+                        # Choose the model with minimal loss on validation set
+                        if len(loss_per_epoch_valid) == 1 or loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
+                            torch.save(model.state_dict(), model_path)
+                            print(f'\nEpoch {epoch:3}: Model saved! -> Val Loss = {valid_loss_epoch:.6f}' \
+                                  f'\nVal  F1 = {valid_f1_epoch:.4f}\tVal inv-F1 = {valid_f1_inv_epoch:.4f}' \
+                                  f'\nVal FPR = {valid_fp_rate_epoch:.4f}\tVal FNR = {valid_fn_rate_epoch:.4f}\n')
+                        save_checkpoint(epoch, model, optimizer, min(loss_per_epoch_train), min(loss_per_epoch_valid), out, ckpt_path)  # Save the checkpoint every epoch
+                        scheduler.step(valid_loss_epoch)
 
                     # Code that evalates NGA50 during training -- only for overfitting
                     # plot_nga50_during_training = hyperparameters['plot_nga50_during_training']
@@ -563,28 +499,26 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                     #         nga50 = int(re.findall(r'NGA50\s*(\d+)', text)[0])
                     #         print(f'NG50: {ng50}\tNGA50: {nga50}')
 
-                    try:
-                        if 'nga50' in locals():
-                            pass
-                            # wandb.log({'train_loss': train_loss_epoch, 'val_loss': valid_loss_epoch, 'lr_value': lr_value, \
-                            #            'train_loss': train_loss_epoch, 'train_fpr': train_fp_rate_epoch, 'train_fnr': train_fn_rate_epoch, \
-                            #            'valid_loss': valid_loss_epoch, 'valid_fpr': valid_fp_rate_epoch, 'valid_fnr': valid_fn_rate_epoch, \
-                            #            'train_acc': train_acc_epoch, 'train_precision': train_precision_epoch, 'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
-                            #            'valid_acc': valid_acc_epoch, 'valid_precision': valid_precision_epoch, 'valid_recall': valid_recall_epoch, 'valid_f1': valid_f1_epoch, \
-                            #            'train_precision_inv': train_precision_inv_epoch, 'train_recall_inv': train_recall_inv_epoch, 'train_f1_inv': train_f1_inv_epoch, \
-                            #            'valid_precision_inv': valid_precision_inv_epoch, 'valid_recall_inv': valid_recall_inv_epoch, 'valid_f1_inv': valid_f1_inv_epoch \
-                            #            'NG50': ng50, 'NGA50': nga50})
-                        else:
-                            wandb.log({'train_loss': train_loss_epoch, 'val_loss': valid_loss_epoch, 'lr_value': lr_value, \
-                                       'train_loss': train_loss_epoch, 'train_fpr': train_fp_rate_epoch, 'train_fnr': train_fn_rate_epoch, \
-                                       'valid_loss': valid_loss_epoch, 'valid_fpr': valid_fp_rate_epoch, 'valid_fnr': valid_fn_rate_epoch, \
-                                       'train_acc': train_acc_epoch, 'train_precision': train_precision_epoch, 'train_recall': train_recall_epoch, 'train_f1': train_f1_epoch, \
-                                       'valid_acc': valid_acc_epoch, 'valid_precision': valid_precision_epoch, 'valid_recall': valid_recall_epoch, 'valid_f1': valid_f1_epoch, \
-                                       'train_precision_inv': train_precision_inv_epoch, 'train_recall_inv': train_recall_inv_epoch, 'train_f1_inv': train_f1_inv_epoch, \
-                                       'valid_precision_inv': valid_precision_inv_epoch, 'valid_recall_inv': valid_recall_inv_epoch, 'valid_f1_inv': valid_f1_inv_epoch})
-                    except Exception as e:
-                        print(f'WandB exception occured!')
-                        print(e)
+                try:
+                    # Log training metrics
+                    log_data = {f"train/{key}": value for key, value in epoch_mean_metrics_train.items()}
+
+                    # Log validation metrics if available
+                    if "epoch_mean_metrics_valid" in locals():  # Ensure validation metrics exist
+                        log_data.update({f"valid/{key}": value for key, value in epoch_mean_metrics_valid.items()})
+
+                    # Log reconstruction metrics if available
+                    # if 'nga50' in locals():
+                    #     log_data['reconstruct/ng50': ng50]
+                    #     log_data['reconstruct/nga50': nga50]
+                        
+                    # Log additional information
+                    log_data['lr_value'] = lr_value
+                    wandb.log(log_data)
+
+                except Exception as e:
+                    print(f'WandB exception occured!')
+                    print(e)
 
     except KeyboardInterrupt:
         torch.cuda.empty_cache()
