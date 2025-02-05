@@ -193,7 +193,7 @@ def get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device):
     return loss, logits_org
 
 
-def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, finetune=False, ft_model=None, gpu=None):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, ft_model=None, gpu=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
@@ -300,26 +300,12 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
         loss_per_epoch_train.append(min_loss_train)
         loss_per_epoch_valid.append(min_loss_valid)
         
-    if finetune:
-        # ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'  # This should be the checkpoint of the old run
-        # checkpoint = torch.load(ckpt_path)
-        # print('Loding the checkpoint from:', ckpt_path, sep='\t')
-        model_path = os.path.join(models_path, f'finetune-model_{out}.pt')
-        ckpt_path  = os.path.join(checkpoints_path, f'finetune-ckpt_{out}.pt')
-        print('Saving the resumed model to:', model_path, sep='\t')
-        print('Saving the new checkpoint to:', ckpt_path, sep='\t')
-        
-        start_epoch = 0
-        ft_model = torch.load(ft_model)
-        model.load_state_dict(ft_model)
-        # optimizer.load_state_dict(checkpoint['optim_state_dict'])
-        
     elapsed = utils.timedelta_to_str(datetime.now() - time_start)
     print(f'Loading data done. Elapsed time: {elapsed}')
 
     try:
         with wandb.init(project=wandb_project, config=hyperparameters, mode=wandb_mode, name=out):
-            wandb.watch(model, criterion, log='all', log_freq=1000)
+            # wandb.watch(model, criterion, log='all', log_freq=2)
             for epoch in range(start_epoch, num_epochs):
                 print('\n===> TRAINING')
                 epoch_metrics_list_train = []
@@ -349,13 +335,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
-                        epoch_metrics_list_train.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
-
+                        epoch_metrics_list_train.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each graph in the dataset
                     else: # train with mini-batch
                         print(f'\nUse METIS: True')
                         print(f'Number of clusters:', num_clusters)
-                        g = g.long()
-                        d = dgl.metis_partition(g, num_clusters, extra_cached_hops=k_extra_hops)
+                        d = dgl.metis_partition(g.long(), num_clusters, extra_cached_hops=k_extra_hops)
                         sub_gs = list(d.values())
                         random.shuffle(sub_gs)
 
@@ -420,12 +404,11 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                             else:
                                 loss, logits = get_bce_loss_full(g, model, pos_weight, device)
                             labels = g.edata['y'].to(device)
-                            epoch_metrics_list_valid.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each partition in the dataset
-
+                            epoch_metrics_list_valid.append(compute_metrics(logits, labels, loss.item()))  # Append with a dict for each graph in the dataset
                         else: # mini-batch
+                            print(f'\nUse METIS: True')
                             print(f'\nNum clusters:', num_clusters)
-                            g = g.long()
-                            d = dgl.metis_partition(g, num_clusters, extra_cached_hops=k_extra_hops)
+                            d = dgl.metis_partition(g.long(), num_clusters, extra_cached_hops=k_extra_hops)
                             sub_gs = list(d.values())
                             for sub_g in sub_gs:
                                 if use_symmetry_loss:
@@ -446,9 +429,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
                     loss_per_epoch_valid.append(epoch_mean_metrics_valid["loss"])
 
                     if not overfit:
-                        if finetune and (epoch+1) % 50 == 0:
-                            model_tmp_path = os.path.join(models_path, f'finetune-model-epoch{epoch}_{out}.pt')
-                            torch.save(model.state_dict(), model_tmp_path)
                         # Choose the model with minimal loss on validation set
                         if len(loss_per_epoch_valid) == 1 or loss_per_epoch_valid[-1] < min(loss_per_epoch_valid[:-1]):
                             torch.save(model.state_dict(), model_path)
@@ -529,7 +509,6 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default=None, help='Name for the model')
     parser.add_argument('--overfit', action='store_true', help='Overfit on the training data')
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
-    parser.add_argument('--finetune', action='store_true', help='Finetune a trained model')
     parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
@@ -538,4 +517,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, \
-          dropout=args.dropout, seed=args.seed, resume=args.resume, finetune=args.finetune, ft_model=args.ft_model, gpu=args.gpu)
+          dropout=args.dropout, seed=args.seed, resume=args.resume, ft_model=args.ft_model, gpu=args.gpu)
