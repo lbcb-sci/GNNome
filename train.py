@@ -4,10 +4,11 @@ import os
 import random
 import re
 
+import dgl
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-import dgl
+from torch.nn import functional as F
 import wandb
 
 from graph_dataset import AssemblyGraphDataset
@@ -87,12 +88,6 @@ def view_model_param(model):
     return total_param
 
 
-def mask_graph(g, fraction, device):
-    keep_node_idx = torch.rand(g.num_nodes(), device=device) < fraction
-    sub_g = dgl.node_subgraph(g, keep_node_idx, store_ids=True)
-    return sub_g
-
-
 def mask_graph_strandwise(g, fraction, device):
     keep_node_idx_half = torch.rand(g.num_nodes() // 2, device=device) < fraction
     keep_node_idx = torch.empty(keep_node_idx_half.size(0) * 2, dtype=keep_node_idx_half.dtype)
@@ -106,11 +101,10 @@ def mask_graph_strandwise(g, fraction, device):
 
 
 def symmetry_loss(org_scores, rev_scores, labels, pos_weight=1.0, alpha=1.0):
-    BCE = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
-    BCE_org = BCE(org_scores, labels)
-    BCE_rev = BCE(rev_scores, labels)
+    bce_org = F.binary_cross_entropy_with_logits(org_scores, labels, pos_weight=pos_weight, reduction='none')
+    bce_rev = F.binary_cross_entropy_with_logits(rev_scores, labels, pos_weight=pos_weight, reduction='none')
     abs_diff = torch.abs(org_scores - rev_scores)
-    loss = (BCE_org + BCE_rev + alpha * abs_diff)
+    loss = (bce_org + bce_rev + alpha * abs_diff)
     loss = loss.mean()
     return loss
 
@@ -147,8 +141,7 @@ def get_bce_loss_full(g, model, pos_weight, device):
     logits = model(g, x, e)
     logits = logits.squeeze(-1)
     labels = g.edata['y'].to(device)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    loss = criterion(logits, labels)
+    loss = F.binary_cross_entropy_with_logits(logits, labels, pos_weight=pos_weight)
     return loss, logits
 
 
@@ -159,9 +152,8 @@ def get_bce_loss_partition(sub_g, g, model, pos_weight, device):
     logits = model(sub_g, x, e) 
     logits = logits.squeeze(-1)
     labels = g.edata['y'][sub_g.edata['_ID']].to(device)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    loss = criterion(logits, labels)
-    return loss, logits  # TODO: This should only return logits, loss compute outside
+    loss = F.binary_cross_entropy_with_logits(logits, labels, pos_weight=pos_weight)
+    return loss, logits
 
 
 def get_symmetry_loss_full(g, model, pos_weight, alpha, device):
@@ -262,7 +254,6 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     ckpt_path = f'{checkpoints_path}/ckpt_{out}.pt'
 
     pos_weight = torch.tensor([1 / pos_to_neg_ratio], device=device)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)  # TODO: Is this needed?
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=decay, patience=patience, verbose=True)
     start_epoch = 0
@@ -305,7 +296,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
     try:
         with wandb.init(project=wandb_project, config=hyperparameters, mode=wandb_mode, name=out):
-            # wandb.watch(model, criterion, log='all', log_freq=2)
+            # wandb.watch(model, log='all', log_freq=2)
             for epoch in range(start_epoch, num_epochs):
                 print('\n===> TRAINING')
                 epoch_metrics_list_train = []
