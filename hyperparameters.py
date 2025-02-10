@@ -26,7 +26,7 @@ def get_hyperparameters():
         'nb_pos_enc': 0,
         'type_pos_enc': 'none',
         'normalization': 'batch',
-        # 'dropout': 0.08,
+        'dropout': 0.2,
 
         # Training
         'num_epochs': 5,

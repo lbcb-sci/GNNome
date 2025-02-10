@@ -240,6 +240,9 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
     else:
         ds_train = ds_valid = AssemblyGraphDataset(train_path, assembler=assembler)
 
+    if dropout is None:
+        dropout = hyperparameters['dropout']
+
     pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for _, g in ds_train]) / len(ds_train)
 
     model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_ne_features, num_gnn_layers, hidden_edge_scores, normalization, dropout=dropout)
