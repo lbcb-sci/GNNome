@@ -185,21 +185,20 @@ def get_symmetry_loss_partition(sub_g, g, model, pos_weight, alpha, device):
     return loss, logits_org
 
 
-def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, ft_model=None, gpu=None):
+def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, seed=None, resume=False, gpu=None):
     hyperparameters = get_hyperparameters()
     if seed is None:
         seed = hyperparameters['seed']
     num_epochs = hyperparameters['num_epochs']
     num_gnn_layers = hyperparameters['num_gnn_layers']
     hidden_features = hyperparameters['dim_latent']
-    nb_pos_enc = hyperparameters['nb_pos_enc']
     patience = hyperparameters['patience']
     lr = hyperparameters['lr']
     device = hyperparameters['device']
     normalization = hyperparameters['normalization']
     node_features = hyperparameters['node_features']
     edge_features = hyperparameters['edge_features']
-    hidden_edge_features = hyperparameters['hidden_edge_features']
+    hidden_ne_features = hyperparameters['hidden_ne_features']
     hidden_edge_scores = hyperparameters['hidden_edge_scores']
     decay = hyperparameters['decay']
     wandb_mode = hyperparameters['wandb_mode']
@@ -243,7 +242,7 @@ def train(train_path, valid_path, out, assembler, overfit=False, dropout=None, s
 
     pos_to_neg_ratio = sum([((torch.round(g.edata['y'])==1).sum() / (torch.round(g.edata['y'])==0).sum()).item() for _, g in ds_train]) / len(ds_train)
 
-    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
+    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_ne_features, num_gnn_layers, hidden_edge_scores, normalization, dropout=dropout)
     model.to(device)
     if not os.path.exists(models_path):
         print(models_path)
@@ -500,7 +499,6 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default=None, help='Name for the model')
     parser.add_argument('--overfit', action='store_true', help='Overfit on the training data')
     parser.add_argument('--resume', action='store_true', help='Resume in case training failed')
-    parser.add_argument('--ft_model', type=str, help='Path to the model for fine-tuning')
     parser.add_argument('--dropout', type=float, default=None, help='Dropout rate for the model')
     parser.add_argument('--seed', type=int, default=None, help='Random seed')
     parser.add_argument('--gpu', type=int, default=None, help='Index of a GPU to train on (unspecified = cpu)')
@@ -508,4 +506,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     train(train_path=args.train, valid_path=args.valid, assembler=args.asm, out=args.name, overfit=args.overfit, \
-          dropout=args.dropout, seed=args.seed, resume=args.resume, ft_model=args.ft_model, gpu=args.gpu)
+          dropout=args.dropout, seed=args.seed, resume=args.resume, gpu=args.gpu)

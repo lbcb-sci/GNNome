@@ -43,6 +43,7 @@ def preprocess_graph(g):
 
 def add_positional_encoding(g):
     """
+        --- OBSOLETE ---
         Initializing positional encoding with k-RW-PE
     """
 

@@ -21,7 +21,7 @@ def get_hyperparameters():
         'num_gnn_layers': 8,
         'node_features': 2,
         'edge_features': 2,  # Put 2 if you use similarities, 1 otherwise
-        'hidden_edge_features': 16,
+        'hidden_ne_features': 16,
         'hidden_edge_scores': 64,
         'nb_pos_enc': 0,
         'type_pos_enc': 'none',
@@ -48,6 +48,6 @@ def get_hyperparameters():
         'load_checkpoint': True,
         'num_threads': 32,
         'B': 1,
-        'len_threshold': 10,
+        'len_threshold': 70_000,
     }
 

@@ -12,7 +12,7 @@ class EdgeEncoder(nn.Module):
         Linear layer used to encode the edge attributes
     """
 
-    def __init__(self, in_channels, out_channels, bias=True):
+    def __init__(self, in_channels, hidden_channels, out_channels, bias=True):
         """
         Parameters:
         in_channels : int
@@ -21,8 +21,13 @@ class EdgeEncoder(nn.Module):
             Dimension of the output (encoded) vectors
         """
         super().__init__()
-        self.linear = nn.Linear(in_channels, out_channels, bias=bias)
+        self.linear1 = nn.Linear(in_channels, hidden_channels, bias=bias)
+        self.linear2 = nn.Linear(hidden_channels, out_channels, bias=bias)
+        self.relu = nn.ReLU()
 
     def forward(self, x):
         """Return the encoded edge attributes."""
-        return self.linear(x)
+        x = self.linear1(x)
+        x = self.relu(x)
+        x = self.linear2(x)
+        return x
