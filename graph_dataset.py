@@ -7,7 +7,7 @@ import dgl
 from dgl.data import DGLDataset
 
 import graph_parser
-from config import get_config
+from configs.config import get_config
 from utils.data_utils import preprocess_graph, add_positional_encoding, extract_hifiasm_contigs
 
 

@@ -7,7 +7,7 @@ import dgl
 from Bio import Seq, SeqIO
 from scipy import sparse as sp 
 
-from hyperparameters import get_hyperparameters
+from configs.hyperparameters import get_hyperparameters
 
 
 def extract_hifiasm_contigs(path, idx):

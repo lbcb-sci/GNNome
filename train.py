@@ -12,8 +12,8 @@ from torch.nn import functional as F
 import wandb
 
 from graph_dataset import AssemblyGraphDataset
-from hyperparameters import get_hyperparameters
-from config import get_config
+from configs.hyperparameters import get_hyperparameters
+from configs.config import get_config
 import models
 import utils.utils as utils
 import utils.metrics as metrics

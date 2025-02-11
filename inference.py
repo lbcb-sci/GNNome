@@ -17,9 +17,9 @@ import torch.nn.functional as F
 import dgl
 
 from graph_dataset import AssemblyGraphDataset
-from hyperparameters import get_hyperparameters
+from configs.hyperparameters import get_hyperparameters
 import models
-import evaluate
+import utils.evaluate as evaluate
 import utils.utils as utils
 
 DEBUG = False

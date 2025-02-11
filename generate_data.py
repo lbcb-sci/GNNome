@@ -7,7 +7,7 @@ from Bio import SeqIO, AlignIO
 
 import graph_dataset
 import train_valid_chrs
-from config import get_config
+from configs.config import get_config
 
 
 class InvalidSuffixError(Exception):

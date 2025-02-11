@@ -3,10 +3,10 @@ import torch
 def get_hyperparameters():
     return {
         
-        'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
+        'device': 'cuda:2' if torch.cuda.is_available() else 'cpu',
         'seed': 1,
-        'wandb_mode': 'disabled',  # switch between 'online' and 'disabled'
-        'wandb_project': 'GNNome',
+        'wandb_mode': 'online',  # switch between 'online' and 'disabled'
+        'wandb_project': 'GNNome-dev',
 
         # Assembly during training
         'chr_overfit': 0,
@@ -33,7 +33,7 @@ def get_hyperparameters():
         'lr': 1e-4,
         'use_symmetry_loss': True,
         'alpha': 0.1,
-        'num_nodes_per_cluster': 10000,  # 2000 = max 10GB GPU memory for d=128, L=8
+        'num_nodes_per_cluster': 1000,  # 2000 = max 10GB GPU memory for d=128, L=8
         'k_extra_hops': 1,
         'patience': 2,
         'decay': 0.95,
