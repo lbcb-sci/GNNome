@@ -1,0 +1,15 @@
+# python
+__pycache__
+**/__pycache__
+# ide
+.vscode
+# virtual environment
+.venv
+# wandb
+wandb
+# training
+checkpoints
+# data
+data
+# logs
+*.log

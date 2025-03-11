@@ -40,7 +40,7 @@ def walk_to_sequence(walks, graph, reads, edges):
     for i, walk in enumerate(walks):
         prefixes = [(src, graph.edata['prefix_length'][edges[src,dst]]) for src, dst in zip(walk[:-1], walk[1:])]
         sequences = [reads[src][:prefix] for (src, prefix) in prefixes]
-        contig = Seq.Seq(''.join(sequences) + reads[walk[-1]])  # TODO: why is this map here? Maybe I can remove it if I work with strings
+        contig = Seq.Seq(''.join(sequences) + reads[walk[-1]])
         contig = SeqIO.SeqRecord(contig)
         contig.id = f'contig_{i+1}'
         contig.description = f'length={len(contig)}'

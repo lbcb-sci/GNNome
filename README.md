@@ -245,7 +245,7 @@ Once all the data is copied, the script will print out the full paths of the tra
 python train.py --train <train> --valid <valid> --asm <asm>
   
   <train>
-    Ppth to directory where the training data (provided by split_data.py)
+    path to directory where the training data (provided by split_data.py)
   <valid>
     path to directory where the validation data (provided by split_data.py)
   <asm>

@@ -3,14 +3,15 @@ import torch
 def get_hyperparameters():
     return {
         
-        'device': 'cuda:0' if torch.cuda.is_available() else 'cpu',
+        'device': 'cuda:2' if torch.cuda.is_available() else 'cpu',
         'seed': 1,
-        'wandb_mode': 'disabled',  # switch between 'online' and 'disabled'
-        'wandb_project': 'GNNome',
+        'wandb_mode': 'online',  # switch between 'online' and 'disabled'
+        'wandb_project': 'GNNome-dev',
 
+        # Assembly during training
         'chr_overfit': 0,
         'plot_nga50_during_training': False,
-        'eval_frequency': 20, 
+        'eval_frequency': 20,
 
         # Data
         'use_similarities': True,
@@ -20,23 +21,19 @@ def get_hyperparameters():
         'num_gnn_layers': 8,
         'node_features': 2,
         'edge_features': 2,  # Put 2 if you use similarities, 1 otherwise
-        'hidden_edge_features': 16,
+        'hidden_ne_features': 16,
         'hidden_edge_scores': 64,
         'nb_pos_enc': 0,
         'type_pos_enc': 'none',
-        'batch_norm': True,
-        # 'dropout': 0.08,
+        'normalization': 'batch',
+        'dropout': 0.2,
 
         # Training
-        'num_epochs': 200,
+        'num_epochs': 5,
         'lr': 1e-4,
         'use_symmetry_loss': True,
         'alpha': 0.1,
-        'num_parts_metis_train': 200,
-        'num_parts_metis_eval': 200,
-        'num_nodes_per_cluster': 10000,  # 2000 = max 10GB GPU memory for d=128, L=8
-        'npc_lower_bound': 1,  # 0.8
-        'npc_upper_bound': 1,  # 1.2
+        'num_nodes_per_cluster': 1000,  # 2000 = max 10GB GPU memory for d=128, L=8
         'k_extra_hops': 1,
         'patience': 2,
         'decay': 0.95,
@@ -51,6 +48,6 @@ def get_hyperparameters():
         'load_checkpoint': True,
         'num_threads': 32,
         'B': 1,
-        'len_threshold': 10,
+        'len_threshold': 70_000,
     }
 

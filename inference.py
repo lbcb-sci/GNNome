@@ -17,10 +17,10 @@ import torch.nn.functional as F
 import dgl
 
 from graph_dataset import AssemblyGraphDataset
-from hyperparameters import get_hyperparameters
+from configs.hyperparameters import get_hyperparameters
 import models
-import evaluate
-import utils
+import utils.evaluate as evaluate
+import utils.utils as utils
 
 DEBUG = False
 RANDOM = False
@@ -164,7 +164,7 @@ def run_greedy_both_ways(src, dst, logProbs, succs, preds, edges, visited):
     return walk_f, walk_b, visited_f, visited_b, sumLogProb_f, sumLogProb_b
 
 
-def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, use_labels=False, checkpoint_dir=None, load_checkpoint=False, device='cpu', threads=32):
+def get_contigs_greedy(g, succs, preds, edges, len_threshold, nb_paths=50, use_labels=False, checkpoint_dir=None, load_checkpoint=False):
     """Iteratively search for contigs in a graph until the threshold is met."""
     g = g.to('cpu')
     all_contigs = []
@@ -184,7 +184,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         logProbs = torch.log(torch.sigmoid(g.edata['score'].to('cpu')))
 
     print(f'Starting to decode with greedy...')
-    print(f'num_candidates: {nb_paths}, len_threshold: {len_threshold}\n')
+    print(f'num_candidates: {nb_paths}\n')
 
     ckpt_file = os.path.join(checkpoint_dir, 'checkpoint.pkl')
     if load_checkpoint and os.path.isfile(ckpt_file):
@@ -333,7 +333,7 @@ def get_contigs_greedy(g, succs, preds, edges, nb_paths=50, len_threshold=20, us
         print(f'len_walk={len(best_walk):<8} len_contig={best_contig_len:<12} ' \
               f'sumLogProb={best_sumLogProb:<12.3f} meanLogProb={best_meanLogProb:<12.4} meanLogProb_scaled={best_meanLogProb_scaled:<12.4}\n')
         
-        if best_contig_len < 70000:
+        if best_contig_len < len_threshold:
             break
 
         all_contigs.append(best_walk)
@@ -367,12 +367,11 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     seed = hyperparameters['seed']
     num_gnn_layers = hyperparameters['num_gnn_layers']
     hidden_features = hyperparameters['dim_latent']
-    nb_pos_enc = hyperparameters['nb_pos_enc']
 
     normalization = hyperparameters['normalization']
     node_features = hyperparameters['node_features']
     edge_features = hyperparameters['edge_features']
-    hidden_edge_features = hyperparameters['hidden_edge_features']
+    hidden_ne_features = hyperparameters['hidden_ne_features']
     hidden_edge_scores = hyperparameters['hidden_edge_scores']
 
     strategy = hyperparameters['strategy']
@@ -381,7 +380,6 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
     len_threshold = hyperparameters['len_threshold']
     use_labels = hyperparameters['decode_with_labels']
     load_checkpoint = hyperparameters['load_checkpoint']
-    threads = hyperparameters['num_threads']
 
     # random_search = hyperparameters['random_search']
 
@@ -434,12 +432,12 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
                     g.edata['score'] = torch.ones_like(g.edata['prefix_length']) * 10
                 else:
                     print(f'Loading model parameters from: {model_path}')
-                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_edge_features, num_gnn_layers, hidden_edge_scores, normalization, nb_pos_enc, dropout=dropout)
+                    model = models.SymGatedGCNModel(node_features, edge_features, hidden_features, hidden_ne_features, num_gnn_layers, hidden_edge_scores, normalization, dropout=dropout)
                     model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
                     model.eval()
                     model.to(device)
                     print(f'Computing the scores with the model...\n')
-                    edge_predictions = model(g, x, e, pe)
+                    edge_predictions = model(g, x, e)
                     g.edata['score'] = edge_predictions.squeeze()
                     torch.save(g.edata['score'], os.path.join(inference_dir, f'{idx}_predicts.pt'))
 
@@ -465,7 +463,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
         g.edata['prefix_length'] = g.edata['prefix_length'].masked_fill(g.edata['prefix_length']<0, 0)
         
         if strategy == 'greedy':
-            walks = get_contigs_greedy(g, succs, preds, edges, nb_paths, len_threshold, use_labels, checkpoint_dir, load_checkpoint, device='cpu', threads=threads)
+            walks = get_contigs_greedy(g, succs, preds, edges, len_threshold, nb_paths, use_labels, checkpoint_dir, load_checkpoint)
         else:
             print('Invalid decoding strategy')
             raise Exception

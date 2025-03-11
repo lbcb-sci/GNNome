@@ -7,8 +7,8 @@ import dgl
 from dgl.data import DGLDataset
 
 import graph_parser
-from config import get_config
-from utils import preprocess_graph, add_positional_encoding, extract_contigs
+from configs.config import get_config
+from utils.data_utils import preprocess_graph, add_positional_encoding, extract_hifiasm_contigs
 
 
 class AssemblyGraphDataset(DGLDataset):
@@ -110,7 +110,7 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
 
             # Hifiasm
             elif assembler == 'hifiasm':
-                write_paf = False
+                write_paf = False  # TODO: Debugging purposes, remove
                 if write_paf:
                     subprocess.run(f'{self.hifiasm_path} --prt-raw --write-paf -o {idx}_asm -t{self.threads} -l0 {reads_path}', shell=True, cwd=self.output_dir)
                     subprocess.run(f'mv {idx}_asm.ovlp.paf {idx}_ovlp.paf', shell=True, cwd=self.output_dir)
@@ -120,7 +120,7 @@ class AssemblyGraphDataset_HiFi(AssemblyGraphDataset):
                     paf_path = None
                 subprocess.run(f'mv {idx}_asm.bp.raw.r_utg.gfa {idx}_raw_graph.gfa', shell=True, cwd=self.output_dir)
                 gfa_path = os.path.join(self.output_dir, f'{idx}_raw_graph.gfa')
-                extract_contigs(self.output_dir, idx)
+                extract_hifiasm_contigs(self.output_dir, idx)
                 subprocess.run(f'rm {self.output_dir}/{idx}_asm*', shell=True)
 
             print(f'\nAssembler generated the graph! Processing...')
