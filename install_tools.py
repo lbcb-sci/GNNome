@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from config import get_config
+from configs.config import get_config
 
 def install():
     save_dir = get_config()['tool_dir']

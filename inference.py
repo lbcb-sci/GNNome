@@ -417,7 +417,7 @@ def inference(data_path, model_path, assembler, savedir, device='cpu', dropout=N
             pe_in = (pe_in - pe_in.mean()) / pe_in.std()
             pe_out = g.ndata['out_deg'].unsqueeze(1).to(device)
             pe_out = (pe_out - pe_out.mean()) / pe_out.std()
-            pe = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
+            x = torch.cat((pe_in, pe_out), dim=1)  # No PageRank
             
             if use_labels:  # Debugging
                 print('Decoding with labels...')
