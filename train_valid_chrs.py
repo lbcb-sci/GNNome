@@ -25,6 +25,7 @@ _train_dict = {
     'chr21_hg002': 0,
     'chr22_hg002': 0,
     'chrX_hg002':  0,
+    'chr1_other': 0,
 }
 
 _valid_dict = {
@@ -51,6 +52,7 @@ _valid_dict = {
     'chr21_hg002': 0,
     'chr22_hg002': 0,
     'chrX_hg002':  0,
+    'chr1_other': 0,
 }
 
 def get_train_valid_chrs():

@@ -51,6 +51,10 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
                 elif chrN_flag.endswith('_hg002'):
                     chrN = chrN_flag[:-6]
                     chr_sim_path = os.path.join(hg002_path, chrN, assembler)
+                elif chrN_flag.endswith('_other'):
+                    chrN = chrN_flag[:-6]
+                    other_path = os.path.join(hg002_path, '..', 'other')
+                    chr_sim_path = os.path.join(other_path, chrN, assembler)
                 else:
                     print(f'Give proper suffix!')
                     raise Exception
@@ -82,6 +86,11 @@ def train_valid_split(data_path, savedir, assembler, train_dict, valid_dict, nam
                 elif chrN_flag.endswith('_hg002'):
                     chrN = chrN_flag[:-6]
                     chr_sim_path = os.path.join(hg002_path, chrN, assembler)
+                    j = i + train_dict.get(chrN_flag, 0)
+                elif chrN_flag.endswith('_other'):
+                    chrN = chrN_flag[:-6]
+                    other_path = os.path.join(hg002_path, '..', 'other')
+                    chr_sim_path = os.path.join(other_path, chrN, assembler)
                     j = i + train_dict.get(chrN_flag, 0)
                 else:
                     print(f'Give proper suffix!')
