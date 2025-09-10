@@ -22,7 +22,6 @@ class SymGatedGCNModel(nn.Module):
     def forward(self, graph, x, e):
         # x = self.node_encoder(x)
         # e = self.edge_encoder(e)
-        print(x.shape)
         x = self.linear2_node(self.relu(self.linear1_node(x)))
         e = self.linear2_edge(self.relu(self.linear1_edge(e)))
         x, e = self.gnn(graph, x, e)
